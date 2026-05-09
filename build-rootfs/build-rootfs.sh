@@ -89,6 +89,7 @@ cp /work/files/etc/init.d/podroid-bootstrap "$ROOTFS/etc/init.d/"
 cp /work/files/etc/init.d/podroid-network   "$ROOTFS/etc/init.d/"
 cp /work/files/etc/init.d/podroid-resize    "$ROOTFS/etc/init.d/"
 cp /work/files/etc/init.d/podroid-ready     "$ROOTFS/etc/init.d/"
+cp /work/files/etc/init.d/podroid-x11       "$ROOTFS/etc/init.d/"
 chmod +x "$ROOTFS/etc/init.d/podroid-"*
 
 # Copy /usr/local/bin scripts (resize daemon + login wrapper)
