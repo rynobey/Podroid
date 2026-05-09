@@ -14,12 +14,14 @@ import com.excp.podroid.ui.screens.settings.SettingsScreen
 import com.excp.podroid.ui.screens.setup.SetupScreen
 import com.excp.podroid.ui.screens.terminal.TerminalScreen
 import com.excp.podroid.ui.screens.terminal.TerminalViewModel
+import com.excp.podroid.ui.screens.x11.X11Screen
 
 object Routes {
-    const val SETUP    = "setup"
-    const val HOME     = "home"
-    const val TERMINAL = "terminal"
-    const val SETTINGS = "settings"
+    const val SETUP         = "setup"
+    const val HOME          = "home"
+    const val TERMINAL      = "terminal"
+    const val TERMINAL_X11  = "terminal/x11"
+    const val SETTINGS      = "settings"
 }
 
 @Composable
@@ -81,6 +83,24 @@ fun PodroidNavGraph(
                         navController.navigate(Routes.HOME) {
                             popUpTo(0) { inclusive = true }
                         }
+                    }
+                },
+                onNavigateToX11 = {
+                    navController.navigate(Routes.TERMINAL_X11) { launchSingleTop = true }
+                },
+            )
+        }
+
+        composable(Routes.TERMINAL_X11) {
+            X11Screen(
+                onNavigateBack = {
+                    if (!navController.popBackStack(Routes.TERMINAL, inclusive = false)) {
+                        navController.navigate(Routes.TERMINAL) { launchSingleTop = true }
+                    }
+                },
+                onNavigateToTerminal = {
+                    if (!navController.popBackStack(Routes.TERMINAL, inclusive = false)) {
+                        navController.navigate(Routes.TERMINAL) { launchSingleTop = true }
                     }
                 },
             )

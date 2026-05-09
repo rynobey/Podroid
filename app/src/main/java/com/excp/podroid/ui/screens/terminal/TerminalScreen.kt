@@ -53,6 +53,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.windowsizeclass.WindowSizeClass
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.DesktopWindows
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.BoxScope
@@ -118,6 +119,7 @@ import com.termux.view.TerminalView
 fun TerminalScreen(
     windowSizeClass: WindowSizeClass,
     onNavigateBack: () -> Unit,
+    onNavigateToX11: () -> Unit,
     viewModel: TerminalViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
@@ -194,6 +196,9 @@ fun TerminalScreen(
                 }
             },
             actions = {
+                IconButton(onClick = onNavigateToX11) {
+                    Icon(Icons.Default.DesktopWindows, contentDescription = "X11 screen")
+                }
                 IconButton(onClick = { viewModel.openQuickSettings() }) {
                     Text("⚙", fontSize = 18.sp)
                 }
