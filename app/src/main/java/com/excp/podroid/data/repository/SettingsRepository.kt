@@ -43,6 +43,7 @@ class SettingsRepository @Inject constructor(
         val KEY_KERNEL_EXTRA_CMDLINE   = stringPreferencesKey("kernel_extra_cmdline")
         val KEY_SHOW_EXTRA_KEYS        = booleanPreferencesKey("show_extra_keys")
         val KEY_HAPTICS_ENABLED        = booleanPreferencesKey("haptics_enabled")
+        val KEY_DYNAMIC_COLOR_ENABLED  = booleanPreferencesKey("dynamic_color_enabled")
 
         /**
          * Default tunable QEMU args — CPU model, accel tuning, RNG source, overcommit.
@@ -98,6 +99,7 @@ class SettingsRepository @Inject constructor(
     val kernelExtraCmdline   = pref(KEY_KERNEL_EXTRA_CMDLINE, DEFAULT_KERNEL_EXTRA_CMDLINE)
     val showExtraKeys        = pref(KEY_SHOW_EXTRA_KEYS, true)
     val hapticsEnabled       = pref(KEY_HAPTICS_ENABLED, true)
+    val dynamicColorEnabled  = pref(KEY_DYNAMIC_COLOR_ENABLED, false)
 
     suspend fun setDarkTheme(value: Boolean)             = set(KEY_DARK_THEME, value)
     suspend fun setVmRamMb(value: Int)                   = set(KEY_VM_RAM, value)
@@ -113,6 +115,7 @@ class SettingsRepository @Inject constructor(
     suspend fun setKernelExtraCmdline(value: String)     = set(KEY_KERNEL_EXTRA_CMDLINE, value)
     suspend fun setShowExtraKeys(value: Boolean)         = set(KEY_SHOW_EXTRA_KEYS, value)
     suspend fun setHapticsEnabled(value: Boolean)        = set(KEY_HAPTICS_ENABLED, value)
+    suspend fun setDynamicColorEnabled(value: Boolean)   = set(KEY_DYNAMIC_COLOR_ENABLED, value)
 
     // Snapshots used by non-Compose call sites (PodroidService, exporters).
     suspend fun getSshEnabledSnapshot()           = sshEnabled.first()

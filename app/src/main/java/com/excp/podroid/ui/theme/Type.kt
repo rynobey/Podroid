@@ -1,34 +1,55 @@
 package com.excp.podroid.ui.theme
 
 import androidx.compose.material3.Typography
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 
-// Set of Material typography styles to start with
-val Typography = Typography(
-    bodyLarge = TextStyle(
-        fontFamily = FontFamily.Default,
-        fontWeight = FontWeight.Normal,
-        fontSize = 16.sp,
-        lineHeight = 24.sp,
-        letterSpacing = 0.5.sp
+/**
+ * Build a Material3 Typography that uses Inter as the base UI font family.
+ * Called from PodroidTheme — must be @Composable so we can resolve the
+ * asset-backed Inter family via LocalContext (see PodroidTokens.ui()).
+ */
+@Composable @ReadOnlyComposable
+fun buildPodroidTypography(): Typography {
+    val ui = PodroidTokens.ui()
+    return Typography(
+        displayLarge = TextStyle(
+            fontFamily    = ui,
+            fontWeight    = FontWeight.Thin,
+            fontSize      = PodroidTokens.TypeSize.Display,
+            letterSpacing = (-0.02).sp,
+            lineHeight    = 34.sp,
+        ),
+        headlineSmall = TextStyle(
+            fontFamily = ui,
+            fontWeight = FontWeight.SemiBold,
+            fontSize   = PodroidTokens.TypeSize.Headline,
+            lineHeight = 26.sp,
+        ),
+        titleMedium = TextStyle(
+            fontFamily    = ui,
+            fontWeight    = FontWeight.Normal,
+            fontSize      = PodroidTokens.TypeSize.Title,
+            letterSpacing = (-0.005).sp,
+        ),
+        bodyMedium = TextStyle(
+            fontFamily = ui,
+            fontWeight = FontWeight.Normal,
+            fontSize   = PodroidTokens.TypeSize.Body,
+            lineHeight = 18.sp,
+        ),
+        labelMedium = TextStyle(
+            fontFamily    = ui,
+            fontWeight    = FontWeight.Normal,
+            fontSize      = PodroidTokens.TypeSize.Label,
+            letterSpacing = 1.4.sp,
+        ),
     )
-    /* Other default text styles to override
-    titleLarge = TextStyle(
-        fontFamily = FontFamily.Default,
-        fontWeight = FontWeight.Normal,
-        fontSize = 22.sp,
-        lineHeight = 28.sp,
-        letterSpacing = 0.sp
-    ),
-    labelSmall = TextStyle(
-        fontFamily = FontFamily.Default,
-        fontWeight = FontWeight.Medium,
-        fontSize = 11.sp,
-        lineHeight = 16.sp,
-        letterSpacing = 0.5.sp
-    )
-    */
-)
+}
+
+// Backwards-compat default so any direct `Typography` references in tooling
+// keep compiling. Real screens go through buildPodroidTypography() via Theme.
+val Typography = Typography()

@@ -12,4 +12,5 @@ class NavGraphViewModel @Inject constructor(
 ) : ViewModel() {
     val isSetupDone = settingsRepository.isSetupDone
     val darkTheme   = settingsRepository.darkTheme
+    val dynamicColorEnabled = settingsRepository.dynamicColorEnabled
 }

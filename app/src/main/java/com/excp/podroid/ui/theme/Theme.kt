@@ -1,8 +1,10 @@
 /*
- * Podroid - Rootless Podman for Android
- * Copyright (C) 2024-2026 Podroid contributors
+ * Podroid Compose theme.
  *
- * Material You theme for Podroid.
+ * Default identity: fixed dark/light palette derived from PodroidTokens, with
+ * a lime-green accent (#4ade80). Material You wallpaper-derived dynamic color
+ * is OFF by default — users opt in via Settings → Appearance → Dynamic color,
+ * which flows in via the dynamicColor parameter.
  */
 package com.excp.podroid.ui.theme
 
@@ -16,37 +18,87 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalContext
 
-private val DarkColorScheme = darkColorScheme(
-    primary   = Purple80,
-    secondary = PurpleGrey80,
-    tertiary  = Cyan80,
+private val PodroidDark = darkColorScheme(
+    primary             = PodroidAccent,
+    onPrimary           = PodroidAccentInk,
+    primaryContainer    = PodroidDarkSurface2,
+    onPrimaryContainer  = PodroidDarkText,
+
+    secondary           = PodroidAccent,
+    onSecondary         = PodroidAccentInk,
+    secondaryContainer  = PodroidDarkSurface2,
+    onSecondaryContainer= PodroidDarkText,
+
+    tertiary            = PodroidAmber,
+    onTertiary          = PodroidAccentInk,
+
+    background          = PodroidDarkBg,
+    onBackground        = PodroidDarkText,
+    surface             = PodroidDarkSurface,
+    onSurface           = PodroidDarkText,
+    surfaceVariant      = PodroidDarkSurface2,
+    onSurfaceVariant    = PodroidDarkTextMute,
+    surfaceContainerHighest = PodroidDarkSurface2,
+
+    outline             = PodroidDarkBorder,
+    outlineVariant      = PodroidDarkBorder,
+
+    error               = PodroidRed,
+    onError             = PodroidDarkText,
+    errorContainer      = PodroidDarkSurface2,
+    onErrorContainer    = PodroidRed,
 )
 
-private val LightColorScheme = lightColorScheme(
-    primary   = Purple40,
-    secondary = PurpleGrey40,
-    tertiary  = Cyan40,
+private val PodroidLight = lightColorScheme(
+    primary             = PodroidAccent,
+    onPrimary           = PodroidAccentInk,
+    primaryContainer    = PodroidLightSurface2,
+    onPrimaryContainer  = PodroidLightText,
+
+    secondary           = PodroidAccent,
+    onSecondary         = PodroidAccentInk,
+    secondaryContainer  = PodroidLightSurface2,
+    onSecondaryContainer= PodroidLightText,
+
+    tertiary            = PodroidAmber,
+    onTertiary          = PodroidLightText,
+
+    background          = PodroidLightBg,
+    onBackground        = PodroidLightText,
+    surface             = PodroidLightSurface,
+    onSurface           = PodroidLightText,
+    surfaceVariant      = PodroidLightSurface2,
+    onSurfaceVariant    = PodroidLightTextMute,
+    surfaceContainerHighest = PodroidLightSurface2,
+
+    outline             = PodroidLightBorder,
+    outlineVariant      = PodroidLightBorder,
+
+    error               = PodroidRed,
+    onError             = PodroidLightText,
+    errorContainer      = PodroidLightSurface2,
+    onErrorContainer    = PodroidRed,
 )
 
 @Composable
 fun PodroidTheme(
     darkTheme: Boolean? = null,
-    dynamicColor: Boolean = true,
+    dynamicColor: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     val effectiveDark = darkTheme ?: isSystemInDarkTheme()
     val colorScheme = when {
         dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-            val context = LocalContext.current
-            if (effectiveDark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+            val ctx = LocalContext.current
+            if (effectiveDark) dynamicDarkColorScheme(ctx) else dynamicLightColorScheme(ctx)
         }
-        effectiveDark -> DarkColorScheme
-        else          -> LightColorScheme
+        effectiveDark -> PodroidDark
+        else          -> PodroidLight
     }
 
     MaterialTheme(
         colorScheme = colorScheme,
-        typography  = Typography,
+        typography  = buildPodroidTypography(),
         content     = content,
     )
 }

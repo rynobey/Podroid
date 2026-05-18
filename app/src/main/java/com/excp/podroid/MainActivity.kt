@@ -29,7 +29,8 @@ class MainActivity : ComponentActivity() {
             val windowSizeClass = calculateWindowSizeClass(this)
             val navVm: NavGraphViewModel = hiltViewModel()
             val darkTheme by navVm.darkTheme.collectAsStateWithLifecycle(initialValue = null)
-            PodroidTheme(darkTheme = darkTheme) {
+            val dynamicColor by navVm.dynamicColorEnabled.collectAsStateWithLifecycle(initialValue = false)
+            PodroidTheme(darkTheme = darkTheme, dynamicColor = dynamicColor) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background,
