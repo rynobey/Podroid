@@ -34,18 +34,30 @@ data class AvfReport(
     val activeBackend: String = "?",
 ) {
     fun pretty(): String = buildString {
-        appendLine("Active backend: $activeBackend")
+        appendLine("Active backend")
+        appendLine("  $activeBackend")
         appendLine()
-        appendLine("Feature:   android.software.virtualization_framework = $featureSupported")
-        appendLine("Perm:      MANAGE_VIRTUAL_MACHINE granted = $managePermissionGranted")
-        appendLine("Perm:      USE_CUSTOM_VIRTUAL_MACHINE granted = $customPermissionGranted")
-        appendLine("APEX:      /apex/com.android.virt present = $virtApexPresent")
-        appendLine("API:       VirtualMachineManager class loadable = $managerClassPresent")
-        appendLine("Service:   reachable via system service = $serviceReachable")
+        appendLine("Feature: virtualization_framework")
+        appendLine("  supported = $featureSupported")
+        appendLine()
+        appendLine("Permission: MANAGE_VIRTUAL_MACHINE")
+        appendLine("  granted = $managePermissionGranted")
+        appendLine()
+        appendLine("Permission: USE_CUSTOM_VIRTUAL_MACHINE")
+        appendLine("  granted = $customPermissionGranted")
+        appendLine()
+        appendLine("APEX /apex/com.android.virt")
+        appendLine("  present = $virtApexPresent")
+        appendLine()
+        appendLine("API VirtualMachineManager")
+        appendLine("  class loadable = $managerClassPresent")
+        appendLine()
+        appendLine("Service")
+        appendLine("  reachable via system service = $serviceReachable")
         if (smokeTestResult != null) {
             appendLine()
-            appendLine("Smoke test:")
-            appendLine(smokeTestResult)
+            appendLine("Smoke test")
+            appendLine(smokeTestResult.prependIndent("  "))
         }
     }
 }
@@ -58,6 +70,32 @@ object AvfDiagnostics {
     private const val CLS_MANAGER = "android.system.virtualmachine.VirtualMachineManager"
     private const val CLS_CONFIG = "android.system.virtualmachine.VirtualMachineConfig"
     private const val CLS_CUSTOM_CFG = "android.system.virtualmachine.VirtualMachineCustomImageConfig"
+
+    /**
+     * Probe whether this AVF revision can share external storage paths
+     * (e.g. /storage/emulated/.../Download). The 10-param SharedPath ctor
+     * that takes a `boolean appDomain` is the prerequisite — without it,
+     * crosvm inherits our untrusted_app SELinux domain and the kernel
+     * refuses to read external storage (VM dies at start with reason=4).
+     *
+     * On shipping Pixel mustang beta, only the 9-param ctor ships and this
+     * returns false. Google's TerminalApp gets around it by being signed
+     * with the platform key and installed under /apex/com.android.virt/
+     * priv-app/ — a path no third-party APK can take.
+     */
+    fun externalStorageShareSupported(): Boolean {
+        val spCls = runCatching {
+            Class.forName("android.system.virtualmachine.VirtualMachineCustomImageConfig\$SharedPath")
+        }.getOrNull() ?: return false
+        val intT = Int::class.javaPrimitiveType!!
+        val boolT = Boolean::class.javaPrimitiveType!!
+        val strT = String::class.java
+        return runCatching {
+            spCls.getDeclaredConstructor(
+                strT, intT, intT, intT, intT, intT, strT, strT, boolT, strT
+            )
+        }.isSuccess
+    }
 
     /**
      * Read-only probe — never blocks, never touches the system service for
