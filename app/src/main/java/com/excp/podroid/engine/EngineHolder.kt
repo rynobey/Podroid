@@ -82,17 +82,17 @@ class EngineHolder @Inject constructor(
         scope.launch {
             currentFlow.flatMapLatest { eng ->
                 portForwards.rules.combine(eng.state) { rules, state ->
-                    rules.toSet() to state
+                    Triple(eng, rules.toSet(), state)
                 }
-            }.collect { (rules, state) ->
+            }.collect { (eng, rules, state) ->
                 if (state !is VmState.Running) {
                     appliedRules = emptySet()
                     return@collect
                 }
                 val added   = rules - appliedRules
                 val removed = appliedRules - rules
-                for (r in added)   current.addPortForward(r)
-                for (r in removed) current.removePortForward(r)
+                for (r in added)   eng.addPortForward(r)
+                for (r in removed) eng.removePortForward(r)
                 appliedRules = rules
             }
         }
@@ -110,7 +110,7 @@ class EngineHolder @Inject constructor(
             else -> qemuProvider.get()
         }.also {
             android.util.Log.i(
-                "EngineHolder",
+                TAG,
                 "pick: selection=$sel feature=${probe.featureSupported} " +
                     "perms=${probe.managePermissionGranted}/${probe.customPermissionGranted} → ${it.backendId}"
             )
@@ -124,7 +124,7 @@ class EngineHolder @Inject constructor(
         }
         val next = pick(newSel)
         if (next === currentFlow.value) return
-        android.util.Log.i("EngineHolder", "swap: ${currentFlow.value.backendId} → ${next.backendId}")
+        android.util.Log.i(TAG, "swap: ${currentFlow.value.backendId} → ${next.backendId}")
         appliedRules = emptySet()
         _currentFlow.value = next
     }
@@ -157,4 +157,8 @@ class EngineHolder @Inject constructor(
         current.createTerminalSession(client)
     override suspend fun addPortForward(rule: PortForwardRule) = current.addPortForward(rule)
     override suspend fun removePortForward(rule: PortForwardRule) = current.removePortForward(rule)
+
+    companion object {
+        private const val TAG = "EngineHolder"
+    }
 }
