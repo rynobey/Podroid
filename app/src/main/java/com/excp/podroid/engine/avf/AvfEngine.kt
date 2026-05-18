@@ -236,6 +236,18 @@ class AvfEngine @Inject constructor(
         cleanup()
     }
 
+    /**
+     * Live port-forward add. Wired up to a VsockPortForwarder in Task 9; until
+     * then logs and no-ops so EngineHolder's diff loop can run safely.
+     */
+    override suspend fun addPortForward(rule: PortForwardRule) {
+        Log.w(TAG, "addPortForward($rule) — AVF live forwarding not yet wired up (stub)")
+    }
+
+    override suspend fun removePortForward(rule: PortForwardRule) {
+        Log.w(TAG, "removePortForward($rule) — AVF live forwarding not yet wired up (stub)")
+    }
+
     override fun createTerminalSession(client: TerminalSessionClient): TerminalSession {
         sessionClientDelegate = client
         terminalSession?.let {
