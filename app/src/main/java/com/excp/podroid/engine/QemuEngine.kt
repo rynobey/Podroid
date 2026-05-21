@@ -38,6 +38,8 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.io.File
 import java.io.FileOutputStream
 import java.nio.ByteBuffer
@@ -83,6 +85,16 @@ class QemuEngine @Inject constructor(
     @Volatile
     private var bootSocket: LocalSocket? = null
 
+    /**
+     * Last QEMU process exit code (null until it exits) + a bounded tail of
+     * QEMU's own stderr. Surfaced in the diagnostic export so a crash leaves a
+     * forensic trail. Written from start()/the stderr drain, read from the
+     * diagnostic thread — the deque is guarded by its own monitor.
+     */
+    @Volatile
+    private var lastExitCode: Int? = null
+    private val stderrTail = ArrayDeque<String>()
+
     private val qmpSocketPath: String get() = "${context.filesDir.absolutePath}/qmp.sock"
 
     override val qmpClient: QmpClient? by lazy { QmpClient(qmpSocketPath) }
@@ -114,6 +126,15 @@ class QemuEngine @Inject constructor(
 
     /** Set once cleanup() has run for the current VM lifetime; reset by start(). */
     private val cleanedUp = AtomicBoolean(true)
+
+    /**
+     * Serializes the start() re-entrancy guard with the Starting state write so
+     * two near-simultaneous ACTION_STARTs can't both pass the check and launch a
+     * second QEMU (orphaning the first child + leaking its executor). Held only
+     * across the guard + state flip — never across proc.waitFor() — so it can't
+     * deadlock with cleanup()/stop().
+     */
+    private val startMutex = Mutex()
 
     /**
      * Proxy TerminalSessionClient — delegates to whatever real client is set.
@@ -231,9 +252,17 @@ class QemuEngine @Inject constructor(
     }
 
     override suspend fun start(portForwards: List<PortForwardRule>, config: VmConfig) {
-        if (_state.value is VmState.Starting || _state.value is VmState.Running) {
-            Log.w(TAG, "start() called while VM is ${_state.value}, ignoring")
-            return
+        // Atomically check the re-entrancy guard AND claim Starting before any
+        // I/O, so two concurrent ACTION_STARTs can't both pass the guard and
+        // launch a second QEMU. Held only across the guard + state flip.
+        startMutex.withLock {
+            if (_state.value is VmState.Starting || _state.value is VmState.Running) {
+                Log.w(TAG, "start() called while VM is ${_state.value}, ignoring")
+                return
+            }
+            cleanedUp.set(false)
+            bootStartTime = System.currentTimeMillis()
+            _state.value = VmState.Starting
         }
 
         val qemuExe = qemuExecutable() ?: run {
@@ -243,10 +272,10 @@ class QemuEngine @Inject constructor(
 
         ensureStorageImage(config.storageSizeGb)
 
-        cleanedUp.set(false)
-        bootStartTime = System.currentTimeMillis()
-        _state.value = VmState.Starting
-        consoleBuilder.clear()
+        // consoleBuilder is also appended from the monitor coroutine; guard
+        // every access with the same lock cleanup() uses (the @Synchronized
+        // object monitor) so a concurrent append can't race this clear().
+        synchronized(this) { consoleBuilder.clear() }
         _consoleText.value = ""
         _bootStage.value = "Starting QEMU..."
         // Re-arm the one-shot detector so a Stop → Start cycle's second boot
@@ -293,7 +322,9 @@ class QemuEngine @Inject constructor(
                     while (isActive) {
                         val n = proc.errorStream.read(buf)
                         if (n < 0) break
-                        Log.d("PodroidVM-err", String(buf, 0, n).trimEnd().take(300))
+                        val chunk = String(buf, 0, n).trimEnd()
+                        Log.d("PodroidVM-err", chunk.take(300))
+                        recordStderr(chunk)
                     }
                 } catch (e: Exception) {
                     Log.d(TAG, "Stderr drain ended: ${e.message}")
@@ -308,6 +339,7 @@ class QemuEngine @Inject constructor(
             while (System.currentTimeMillis() - startMs < SOCKET_READY_TIMEOUT_MS) {
                 if (!proc.isAlive) {
                     val exitCode = proc.exitValue()
+                    lastExitCode = exitCode
                     Log.e(TAG, "QEMU died during startup, exit code: $exitCode")
                     _state.value = VmState.Error("QEMU exited with code $exitCode")
                     cleanup()
@@ -321,30 +353,48 @@ class QemuEngine @Inject constructor(
                 delay(200)
             }
             if (!socketsReady) {
+                // Don't destroyForcibly()+throw here: that kills QEMU from this
+                // IO thread and skips the dedicated-thread waitFor() reap. Set
+                // the error, signal a graceful stop, and fall through to the
+                // same waitFor() teardown the happy path uses (it reaps on the
+                // podroid-qemu thread). The guard below preserves this message.
                 Log.e(TAG, "Socket timeout — QEMU sockets not ready after ${SOCKET_READY_TIMEOUT_MS}ms")
-                proc.destroyForcibly()
-                throw RuntimeException("QEMU failed to create sockets within ${SOCKET_READY_TIMEOUT_MS / 1000}s")
-            }
-
-            // State stays Starting — boot monitor will set Running when "Ready!" is detected
-            scope.launch {
-                delay(60_000)
-                if (_state.value is VmState.Starting) {
-                    Log.w(TAG, "Boot timeout fallback → forcing Running state")
-                    _bootStage.value = "Ready"
-                    persistBootDuration()
-                    _state.value = VmState.Running
-                    autoStartBridge()
+                _state.value =
+                    VmState.Error("QEMU failed to create sockets within ${SOCKET_READY_TIMEOUT_MS / 1000}s")
+                proc.destroy()
+            } else {
+                // State stays Starting — boot monitor will set Running when "Ready!" is detected
+                scope.launch {
+                    delay(60_000)
+                    // Only promote a still-Starting, still-alive VM. Without the
+                    // isAlive/cleanedUp check a VM that died (or stopped) in the
+                    // window after delay() resumes could be flipped to a phantom
+                    // Running and have the bridge re-armed after exit.
+                    if (_state.value is VmState.Starting &&
+                        process?.isAlive == true && !cleanedUp.get()) {
+                        Log.w(TAG, "Boot timeout fallback → forcing Running state")
+                        _bootStage.value = "Ready"
+                        persistBootDuration()
+                        _state.value = VmState.Running
+                        autoStartBridge()
+                    }
                 }
             }
 
             // Block until QEMU exits, ON THE SAME dedicated thread that fork'd
             // it, so PR_SET_PDEATHSIG never fires while QEMU is healthy.
             val exitCode = withContext(dispatcher) { proc.waitFor() }
+            lastExitCode = exitCode
             Log.d(TAG, "QEMU exited: $exitCode")
+            val priorError = _state.value as? VmState.Error
             cleanup()
-            _state.value = if (exitCode == 0) VmState.Stopped
-                else VmState.Error(formatExitError(exitCode, config.storageAccessEnabled))
+            // If the socket-timeout branch already set a specific Error, keep it
+            // rather than overwriting with the generic signal-exit message.
+            _state.value = when {
+                priorError != null -> priorError
+                exitCode == 0 -> VmState.Stopped
+                else -> VmState.Error(formatExitError(exitCode, config.storageAccessEnabled))
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start QEMU", e)
             _state.value = VmState.Error(e.message ?: "Unknown error")
@@ -426,11 +476,15 @@ class QemuEngine @Inject constructor(
                     byteBuf.compact()
                     charBuf.flip()
                     if (charBuf.hasRemaining()) {
-                        consoleBuilder.append(charBuf)
-                        if (consoleBuilder.length > maxConsoleSize) {
-                            consoleBuilder.delete(0, consoleBuilder.length - maxConsoleSize)
+                        // Guard consoleBuilder with the same lock cleanup()/start()
+                        // use, so a concurrent clear() can't corrupt the append/trim.
+                        synchronized(this) {
+                            consoleBuilder.append(charBuf)
+                            if (consoleBuilder.length > maxConsoleSize) {
+                                consoleBuilder.delete(0, consoleBuilder.length - maxConsoleSize)
+                            }
+                            _consoleText.value = consoleBuilder.toString()
                         }
-                        _consoleText.value = consoleBuilder.toString()
                     }
                     charBuf.clear()
 
@@ -652,6 +706,29 @@ class QemuEngine @Inject constructor(
         return if (exe.exists()) exe else null
     }
 
+    override fun diagnosticsReport(): String = buildString {
+        appendLine("last process exit code: ${lastExitCode?.toString() ?: "(still running / not yet exited)"}")
+        val tail = synchronized(stderrTail) { stderrTail.toList() }
+        if (tail.isEmpty()) {
+            appendLine("qemu stderr: (none captured)")
+        } else {
+            appendLine("qemu stderr (last ${tail.size} line(s)):")
+            tail.forEach { appendLine("  $it") }
+        }
+    }
+
+    /** Keep the most recent [STDERR_TAIL_LINES] non-blank stderr lines. */
+    private fun recordStderr(chunk: String) {
+        if (chunk.isBlank()) return
+        synchronized(stderrTail) {
+            for (line in chunk.lineSequence()) {
+                if (line.isBlank()) continue
+                stderrTail.addLast(line)
+                while (stderrTail.size > STDERR_TAIL_LINES) stderrTail.removeFirst()
+            }
+        }
+    }
+
     /**
      * Decode a QEMU process exit code into a user-facing error string. Process
      * exit codes ≥128 are POSIX-encoded signals (128 + signum). On some devices
@@ -685,6 +762,7 @@ class QemuEngine @Inject constructor(
 
     companion object {
         private const val TAG = "QemuEngine"
+        private const val STDERR_TAIL_LINES = 40
 
         /** Shared deadline for both start()'s socket-readiness loop and monitorBootSerial's wait. */
         private const val SOCKET_READY_TIMEOUT_MS = 10_000L
