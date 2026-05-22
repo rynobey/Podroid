@@ -28,15 +28,16 @@ done
 
 # Persistent: format on first boot if needed.
 # noatime: stop atime writes on every read.
-# commit=60: journal commits every 60s (default 5s) — 12× less journal IO
-#   under bursty container ops. Risk on power loss is bounded to the last
-#   60s of writes, which the user can mitigate with `sync` if it matters.
-# nobarrier: write barriers are unnecessary inside the VM because QEMU's
-#   cache=writeback layer already gives us host-level barriers on flush.
-#   Saves journal-commit syscalls on every metadata change.
-if ! mount -t ext4 -o rw,noatime,commit=60,barrier=0 /dev/vda /mnt/persist 2>/dev/null; then
+# commit=1: journal commits every 1s (vs ext4's 5s default) so an abrupt
+#   VM kill (Stop/Restart) loses at most ~1s of writes. QEMU has no per-stop
+#   guest-sync channel, so this commit window is what bounds its data loss;
+#   the AVF backend additionally issues an explicit sync before stopping.
+# barrier=1: write barriers ON so ext4's journal ordering is durable. The
+#   guest's flushes reach storage.img through QEMU's writeback cache, which
+#   honors flushes, keeping the on-disk journal consistent for recovery.
+if ! mount -t ext4 -o rw,noatime,commit=1,barrier=1 /dev/vda /mnt/persist 2>/dev/null; then
     e2fsck -y /dev/vda >/dev/null 2>&1 || mkfs.ext4 -q -F /dev/vda
-    mount -t ext4 -o rw,noatime,commit=60,barrier=0 /dev/vda /mnt/persist \
+    mount -t ext4 -o rw,noatime,commit=1,barrier=1 /dev/vda /mnt/persist \
         || { echo "FATAL: persistent ext4 (/dev/vda) mount failed" > /dev/console; ls -l /dev/vd* > /dev/console 2>&1; exec sh; }
 fi
 
