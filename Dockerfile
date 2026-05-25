@@ -1,6 +1,13 @@
+# syntax=docker/dockerfile:1
 # ─────────────────────────────────────────────────────────────────────────────
 # Podroid Unified Dockerfile
 # Combines Custom Kernel, Initramfs (Alpine VM) and QEMU (Android ARM64) builds.
+#
+# The `# syntax=` directive above pins BuildKit to the latest stable
+# dockerfile frontend, which is what lets us use `RUN ... << EOF` heredocs
+# (e.g. line ~230 for the cross-compile .ini). Without it, BuildKit's
+# default frontend can be too old to parse heredocs and reads the lines
+# inside `<<EOF ... EOF` as separate (invalid) Dockerfile instructions.
 # ─────────────────────────────────────────────────────────────────────────────
 
 # ==============================================================================
