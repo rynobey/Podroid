@@ -101,11 +101,21 @@ jobs:
             unzip -l app/build/outputs/apk/debug/app-debug.apk | tail -20
           fi
 
+      # actions/upload-artifact rejects forward slashes in artifact names,
+      # and branch names like `feat/more-memory-options` include one. Replace
+      # `/` with `-` and shorten the SHA so the artifact name is readable.
+      - name: Compute artifact name
+        id: artifact_name
+        run: |
+          safe_ref="${GITHUB_REF_NAME//\//-}"
+          short_sha="${GITHUB_SHA:0:7}"
+          echo "name=app-debug-${safe_ref}-${short_sha}" >> "$GITHUB_OUTPUT"
+
       - name: Upload APK artifact
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug-${{ github.ref_name }}-${{ github.sha }}
+          name: ${{ steps.artifact_name.outputs.name }}
           path: app/build/outputs/apk/debug/app-debug.apk
           # 14 days is plenty for a quick sideload + verify cycle and
           # well under GitHub's 90-day max.
