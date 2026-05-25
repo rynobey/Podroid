@@ -87,10 +87,52 @@ jobs:
           docker image prune -af >/dev/null 2>&1 || true
           df -h /
 
-      - name: Build everything (./build-all.sh all)
+      # Cache the *outputs* of the heavy native build stages (kernel,
+      # initramfs, rootfs squashfs, QEMU + bridge .so files). GitHub
+      # cache size limit is 10 GB/repo; total native artifacts here
+      # are well under 500 MB. Cache key is derived from every file
+      # that materially affects those outputs — Dockerfile content,
+      # kernel config, native source, version pins. When any of those
+      # change, the key changes, and we rebuild.
+      - name: Cache native build outputs
+        id: native-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            app/src/main/jniLibs/arm64-v8a
+            app/src/main/assets/vmlinuz-virt
+            app/src/main/assets/initrd.img
+            app/src/main/assets/alpine-rootfs.squashfs
+            app/src/main/assets/qemu
+          key: native-${{ runner.os }}-${{ hashFiles('Dockerfile', 'build-rootfs/**', 'podroid_kernel.config', 'podroid-bridge.c', 'podroid-launcher.c', 'gradle.properties') }}
+          # If the exact hash doesn't match, fall back to the most
+          # recent native- cache and re-run only the differing stage.
+          # In practice every stage reads from the same Dockerfile so
+          # any change tends to invalidate everything, but the prefix
+          # match means at least small tweaks (e.g. README-only) hit.
+          restore-keys: |
+            native-${{ runner.os }}-
+
+      - name: Build native bits (kernel + initramfs + rootfs + QEMU)
+        if: steps.native-cache.outputs.cache-hit != 'true'
         run: |
           chmod +x build-all.sh
-          ./build-all.sh all
+          ./build-all.sh initramfs
+          ./build-all.sh rootfs
+          ./build-all.sh qemu
+
+      - name: Native cache hit — skipping the slow stages
+        if: steps.native-cache.outputs.cache-hit == 'true'
+        run: |
+          echo "Restored native artifacts from cache:"
+          ls -la app/src/main/jniLibs/arm64-v8a/ 2>/dev/null
+          ls -la app/src/main/assets/vmlinuz-virt app/src/main/assets/initrd.img app/src/main/assets/alpine-rootfs.squashfs 2>/dev/null
+          ls -la app/src/main/assets/qemu/ 2>/dev/null
+
+      - name: Build APK (./build-all.sh apk)
+        run: |
+          chmod +x build-all.sh
+          ./build-all.sh apk
 
       - name: Show APK details
         if: always()
