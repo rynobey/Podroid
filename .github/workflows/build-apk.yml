@@ -43,13 +43,17 @@ jobs:
         with:
           platforms: arm64
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-        with:
-          # Use the default driver — `--output type=local,...` (used by
-          # build-rootfs) needs buildkit, which the docker-container
-          # driver provides by default.
-          install: true
+      # NOTE: deliberately NOT using docker/setup-buildx-action. That
+      # action's default `docker-container` driver builds images into a
+      # separate buildkit cache instead of loading them into the local
+      # Docker daemon. build-all.sh then runs `docker create --name … <tag>`
+      # against the local daemon, which can't see them and tries to pull
+      # from a registry → "denied: requested access to the resource".
+      #
+      # The default Docker on ubuntu-latest already has BuildKit enabled
+      # via the `docker` driver, which (a) loads built images to the
+      # local daemon, and (b) still supports `--output type=local,…` used
+      # by build-rootfs/Dockerfile.rootfs. So no buildx setup is needed.
 
       - name: Set up JDK 21
         uses: actions/setup-java@v4
