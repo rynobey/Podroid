@@ -447,7 +447,7 @@ private fun RamSection(currentMb: Int, onChange: (Int) -> Unit, enabled: Boolean
             horizontalArrangement = Arrangement.spacedBy(PodroidTokens.Spacing.SM),
             verticalArrangement = Arrangement.spacedBy(PodroidTokens.Spacing.SM),
         ) {
-            listOf(512, 1024, 2048, 4096).forEach { mb ->
+            listOf(512, 1024, 2048, 4096, 6144, 8192).forEach { mb ->
                 FilterChip(
                     selected = mb == currentMb,
                     enabled = enabled,
