@@ -27,9 +27,12 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    # First cold build is ~30–40 min (kernel cross-compile + QEMU build);
-    # later runs are faster thanks to Docker layer + Gradle caches.
-    timeout-minutes: 90
+    # A full cold build (kernel cross-compile + arm64-emulated rootfs +
+    # QEMU) exceeds 90 min, so allow generous headroom. Cache hits make
+    # most runs far quicker; a Dockerfile/kernel-config change forces a
+    # full native rebuild and needs the full budget. GH-hosted runners
+    # cap jobs at 360 min regardless.
+    timeout-minutes: 180
 
     steps:
       - name: Checkout

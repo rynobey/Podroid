@@ -127,6 +127,9 @@ RUN printf '%s\n' \
     'CONFIG_DRM=y' \
     'CONFIG_DRM_VIRTIO_GPU=y' \
     'CONFIG_VIRTIO_INPUT=y' \
+    'CONFIG_VIRTIO_BALLOON=y' \
+    'CONFIG_MEMORY_BALLOON=y' \
+    'CONFIG_PAGE_REPORTING=y' \
     > /tmp/forced_builtin.config
 RUN cd linux-${KERNEL_VERSION} \
     && make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- defconfig \
@@ -152,7 +155,8 @@ RUN cd linux-${KERNEL_VERSION} \
                   FW_LOADER_COMPRESS FW_LOADER_COMPRESS_ZSTD UNICODE \
                   USB_XHCI_HCD USB_XHCI_PCI USB_STORAGE USB_UAS \
                   SCSI BLK_DEV_SD VFAT_FS EXFAT_FS \
-                  DRM DRM_VIRTIO_GPU VIRTIO_INPUT; do \
+                  DRM DRM_VIRTIO_GPU VIRTIO_INPUT \
+                  VIRTIO_BALLOON PAGE_REPORTING; do \
            grep -q "^CONFIG_${opt}=y\$" .config \
                || { echo "FATAL: CONFIG_${opt} is not =y after merge" >&2; \
                     grep "CONFIG_${opt}" .config >&2; exit 1; }; \
