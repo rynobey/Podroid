@@ -71,6 +71,22 @@ jobs:
       - name: Cache Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      # Cache the Android debug keystore so all CI-built APKs share a
+      # consistent signature. Without this, each ephemeral runner
+      # generates a fresh ~/.android/debug.keystore → every CI APK has
+      # a different signing key → can't update an installed APK in
+      # place (Android refuses INSTALL_FAILED_UPDATE_INCOMPATIBLE).
+      # The static cache key means the first build after this lands
+      # is still cache-miss (fresh keystore) but every subsequent
+      # build hits → installs in-place forever after.
+      - name: Cache Android debug keystore
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: android-debug-keystore-v1
+          restore-keys: |
+            android-debug-keystore
+
       # Free up disk: GH-hosted runners ship with ~14 GB free, and the
       # combined kernel + QEMU + Alpine pipeline gets close. Strip
       # unused toolchains to give the build breathing room.

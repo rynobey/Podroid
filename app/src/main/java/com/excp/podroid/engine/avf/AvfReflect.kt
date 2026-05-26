@@ -106,6 +106,47 @@ object AvfReflect {
         invokeDecl(b, "setMemoryBytes", Long::class.javaPrimitiveType!! to bytes)
     }
 
+    /**
+     * Try to enable the virtio-balloon device so the host can reclaim
+     * idle guest memory under pressure. Without this, every guest page
+     * that gets touched stays committed on the host indefinitely — Android
+     * sees the full VM allocation as resident regardless of guest activity,
+     * which on a 12 GB Pixel routinely triggers LMK kills of Podroid when
+     * the VM is doing memory-heavy operations (backup, big builds).
+     *
+     * The setter name varies across AVF API revisions. We probe several
+     * known shapes via reflection and accept the first one that takes:
+     *
+     *   - setAutoMemoryBalloon(boolean) on VirtualMachineConfig.Builder
+     *     (the JSON-config field is `auto_memory_balloon`; Java setter
+     *     follows naming convention)
+     *   - setMemoryBalloon(boolean) on VirtualMachineCustomImageConfig.Builder
+     *     (some revisions put it on the custom-image builder)
+     *
+     * Returns true if any setter accepted the call. Logs the outcome so
+     * we can tell whether the device actually enables ballooning.
+     */
+    fun tryEnableMemoryBalloon(builder: Any): Boolean {
+        val candidates = listOf(
+            "setAutoMemoryBalloon",
+            "setMemoryBalloon",
+        )
+        for (name in candidates) {
+            val ok = runCatching {
+                val m = builder.javaClass.getDeclaredMethod(name, java.lang.Boolean.TYPE)
+                    .apply { isAccessible = true }
+                m.invoke(builder, true)
+                android.util.Log.i(
+                    "AvfReflect",
+                    "memory balloon enabled via ${builder.javaClass.simpleName}.$name(true)",
+                )
+                true
+            }.getOrDefault(false)
+            if (ok) return true
+        }
+        return false
+    }
+
     /** CPU topology values matching VirtualMachineConfig.CPU_TOPOLOGY_*. */
     const val CPU_TOPOLOGY_ONE_CPU: Int = 0
     const val CPU_TOPOLOGY_MATCH_HOST: Int = 1

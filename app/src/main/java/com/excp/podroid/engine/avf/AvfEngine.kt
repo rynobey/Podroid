@@ -792,6 +792,12 @@ class AvfEngine @Inject constructor(
             }
         }
         AvfReflect.setNetworkSupported(cb, true)
+        // Try enabling virtio-balloon on the CustomImageConfig builder
+        // first — some AVF revisions expose the setter here. If it
+        // doesn't exist on this shape, we try the VmConfig builder
+        // below (after setMemoryBytes) instead.
+        var balloonState = if (AvfReflect.tryEnableMemoryBalloon(cb))
+            "enabled (CustomImage)" else "(not on CustomImage)"
         val customCfg = AvfReflect.build(cb)
 
         val vb = AvfReflect.newVmConfigBuilder(context)
@@ -815,8 +821,20 @@ class AvfEngine @Inject constructor(
         AvfReflect.setVmOutputCaptured(vb, true)
         AvfReflect.setVmConsoleInputSupported(vb, true)
         AvfReflect.setCustomImageConfig(vb, customCfg)
+        // If the balloon setter wasn't on the CustomImageConfig builder,
+        // try the top-level VmConfig builder. Public-API AVF revisions
+        // tend to expose `setAutoMemoryBalloon` here.
+        if (!balloonState.startsWith("enabled")) {
+            if (AvfReflect.tryEnableMemoryBalloon(vb)) {
+                balloonState = "enabled (VmConfig)"
+            } else {
+                balloonState = "unavailable (no setter on this AVF revision)"
+            }
+        }
+        Log.i(TAG, "memory balloon: $balloonState")
         launchConfigSummary = "vCPUs=${config.cpus}, memory=${config.ramMb}MB, console=hvc0, " +
-            "protectedVm=$protectedStr, downloadsShare=$shareSummary, verboseLogging=${config.verboseLogging}"
+            "protectedVm=$protectedStr, downloadsShare=$shareSummary, " +
+            "balloon=$balloonState, verboseLogging=${config.verboseLogging}"
         return AvfReflect.build(vb)
     }
 }
