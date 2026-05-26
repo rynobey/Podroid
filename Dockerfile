@@ -124,6 +124,9 @@ RUN printf '%s\n' \
     'CONFIG_VSOCKETS=y' \
     'CONFIG_VSOCKETS_DIAG=y' \
     'CONFIG_VIRTIO_VSOCKETS=y' \
+    'CONFIG_DRM=y' \
+    'CONFIG_DRM_VIRTIO_GPU=y' \
+    'CONFIG_VIRTIO_INPUT=y' \
     > /tmp/forced_builtin.config
 RUN cd linux-${KERNEL_VERSION} \
     && make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- defconfig \
@@ -148,7 +151,8 @@ RUN cd linux-${KERNEL_VERSION} \
                   RTW88_8821AU RTW88_8812AU RTW88_8814AU \
                   FW_LOADER_COMPRESS FW_LOADER_COMPRESS_ZSTD UNICODE \
                   USB_XHCI_HCD USB_XHCI_PCI USB_STORAGE USB_UAS \
-                  SCSI BLK_DEV_SD VFAT_FS EXFAT_FS; do \
+                  SCSI BLK_DEV_SD VFAT_FS EXFAT_FS \
+                  DRM DRM_VIRTIO_GPU VIRTIO_INPUT; do \
            grep -q "^CONFIG_${opt}=y\$" .config \
                || { echo "FATAL: CONFIG_${opt} is not =y after merge" >&2; \
                     grep "CONFIG_${opt}" .config >&2; exit 1; }; \

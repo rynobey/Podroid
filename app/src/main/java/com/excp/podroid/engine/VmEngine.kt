@@ -84,4 +84,8 @@ data class VmConfig(
     val verboseLogging: Boolean = false,
     val x11Dpi: Int = 96,
     val usbPassthroughEnabled: Boolean = false,
+    // Experimental: attach a gfxstream GpuConfig to the VM. Off by
+    // default — requires a guest kernel with CONFIG_DRM_VIRTIO_GPU to
+    // actually surface /dev/dri. See AvfReflect.tryEnableGpu.
+    val gpuEnabled: Boolean = false,
 )

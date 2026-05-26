@@ -27,6 +27,8 @@ object AvfReflect {
     private val CUSTOM by lazy { Class.forName("$PKG.VirtualMachineCustomImageConfig") }
     private val CUSTOM_B by lazy { Class.forName("$PKG.VirtualMachineCustomImageConfig\$Builder") }
     private val DISK by lazy { runCatching { Class.forName("$PKG.VirtualMachineCustomImageConfig\$Disk") }.getOrNull() }
+    private val GPU_CFG by lazy { runCatching { Class.forName("$PKG.VirtualMachineCustomImageConfig\$GpuConfig") }.getOrNull() }
+    private val GPU_CFG_B by lazy { runCatching { Class.forName("$PKG.VirtualMachineCustomImageConfig\$GpuConfig\$Builder") }.getOrNull() }
 
     fun manager(ctx: Context): Any {
         val m = Context::class.java.getMethod("getSystemService", Class::class.java)
@@ -156,6 +158,75 @@ object AvfReflect {
             if (ok) return true
         }
         return false
+    }
+
+    /**
+     * Try to attach a gfxstream GPU config to the CustomImageConfig
+     * builder, enabling hardware-accelerated rendering in the guest via
+     * virtio-gpu. Mirrors AOSP Terminal's ConfigJson$GpuJson → GpuConfig:
+     *
+     *   backend       = "gfxstream"
+     *   contextTypes  = ["gfxstream-vulkan"]
+     *   rendererUse{Vulkan,Gles,Egl,Surfaceless} = true
+     *
+     * Hard requirements for this to actually produce a usable GPU:
+     *   1. virtualizationservice must ACCEPT a GpuConfig from this
+     *      (non-platform) app — gated by USE_CUSTOM_VIRTUAL_MACHINE,
+     *      which adb-setup.sh grants. If it silently drops it, crosvm
+     *      launches without --gpu and this whole thing is a no-op.
+     *   2. The guest kernel must have CONFIG_DRM_VIRTIO_GPU so
+     *      /dev/dri/card0 appears. (podroid_kernel.config needs DRM
+     *      enabled — it's off by default.)
+     *
+     * This is the de-risk probe: even if (2) isn't met yet, a successful
+     * setGpuConfig + crosvm getting `--gpu` in its args confirms (1) —
+     * i.e. that the privilege gate is passable and the full GPU project
+     * is worth pursuing.
+     *
+     * Returns a human-readable status string for the launch summary.
+     */
+    fun tryEnableGpu(customBuilder: Any): String {
+        val gpuCfgB = GPU_CFG_B ?: return "unavailable (no GpuConfig\$Builder on this AVF revision)"
+        val gpuCfgCls = GPU_CFG ?: return "unavailable (no GpuConfig class on this AVF revision)"
+        return runCatching {
+            val b = gpuCfgB.getDeclaredConstructor().apply { isAccessible = true }.newInstance()
+
+            // backend — required
+            gpuCfgB.getDeclaredMethod("setBackend", String::class.java)
+                .apply { isAccessible = true }.invoke(b, "gfxstream")
+
+            // context types — gfxstream-vulkan is the modern path
+            runCatching {
+                gpuCfgB.getDeclaredMethod("setContextTypes", Array<String>::class.java)
+                    .apply { isAccessible = true }
+                    .invoke(b, arrayOf("gfxstream-vulkan"))
+            }
+
+            // renderer toggles — best-effort; tolerate any being absent
+            for ((name, value) in listOf(
+                "setRendererUseVulkan" to true,
+                "setRendererUseGles" to true,
+                "setRendererUseEgl" to true,
+                "setRendererUseSurfaceless" to true,
+            )) {
+                runCatching {
+                    gpuCfgB.getDeclaredMethod(name, java.lang.Boolean.TYPE)
+                        .apply { isAccessible = true }.invoke(b, value)
+                }
+            }
+
+            val gpuCfg = gpuCfgB.getDeclaredMethod("build").apply { isAccessible = true }.invoke(b)
+                ?: return "failed (GpuConfig.build() returned null)"
+
+            customBuilder.javaClass.getDeclaredMethod("setGpuConfig", gpuCfgCls)
+                .apply { isAccessible = true }.invoke(customBuilder, gpuCfg)
+
+            android.util.Log.i("AvfReflect",
+                "GPU config set: backend=gfxstream contextTypes=[gfxstream-vulkan]")
+            "enabled (gfxstream, contextTypes=[gfxstream-vulkan])"
+        }.getOrElse { e ->
+            "failed: ${e.javaClass.simpleName}: ${e.message}"
+        }
     }
 
     /** CPU topology values matching VirtualMachineConfig.CPU_TOPOLOGY_*. */
