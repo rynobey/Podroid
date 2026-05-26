@@ -114,22 +114,33 @@ object AvfReflect {
      * which on a 12 GB Pixel routinely triggers LMK kills of Podroid when
      * the VM is doing memory-heavy operations (backup, big builds).
      *
-     * The setter name varies across AVF API revisions. We probe several
-     * known shapes via reflection and accept the first one that takes:
+     * Verified against the Android 16 AVF API (Pixel 10, May 2026 build)
+     * by pulling /apex/com.android.virt/javalib/framework-virtualization.jar
+     * and dexdump'ing it. The exact method is:
      *
-     *   - setAutoMemoryBalloon(boolean) on VirtualMachineConfig.Builder
-     *     (the JSON-config field is `auto_memory_balloon`; Java setter
-     *     follows naming convention)
-     *   - setMemoryBalloon(boolean) on VirtualMachineCustomImageConfig.Builder
-     *     (some revisions put it on the custom-image builder)
+     *   VirtualMachineCustomImageConfig$Builder.useAutoMemoryBalloon(Z)
+     *     → returns the Builder (chainable)
+     *     → hiddenapi: BLOCKED, so direct reflection from a non-platform
+     *       app requires the bypass that Podroid already has in place.
+     *
+     * The corresponding JSON-config field is `auto_memory_balloon` (we
+     * confirmed this in the Stock Linux Terminal's APK strings — same
+     * field name, same AVF version).
+     *
+     * Older Android-15 builds may have used `setAutoMemoryBalloon` or
+     * `setMemoryBalloon` on the same builder, so we still probe those
+     * as fallbacks. Note: there's also a RUNTIME setMemoryBalloon(long)
+     * on IVirtualMachine (the binder interface) for dynamic adjustment
+     * after start — that's a different code path, not what we want here.
      *
      * Returns true if any setter accepted the call. Logs the outcome so
      * we can tell whether the device actually enables ballooning.
      */
     fun tryEnableMemoryBalloon(builder: Any): Boolean {
         val candidates = listOf(
-            "setAutoMemoryBalloon",
-            "setMemoryBalloon",
+            "useAutoMemoryBalloon",      // Android 16+ (confirmed Pixel 10)
+            "setAutoMemoryBalloon",      // hypothetical older revision
+            "setMemoryBalloon",          // hypothetical older revision
         )
         for (name in candidates) {
             val ok = runCatching {
