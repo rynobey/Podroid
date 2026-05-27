@@ -129,10 +129,20 @@ RUN printf '%s\n' \
     'CONFIG_VIRTIO_INPUT=y' \
     'CONFIG_VIRTIO_BALLOON=y' \
     'CONFIG_MEMORY_BALLOON=y' \
-    '# CONFIG_PAGE_REPORTING is not set' \
+    'CONFIG_PAGE_REPORTING=y' \
     > /tmp/forced_builtin.config
+# SMP-corruption test: keep the balloon (inflate/deflate) but disable virtio
+# free-page-reporting — suspected of racing under multi-vCPU and corrupting
+# guest memory. PAGE_REPORTING stays =y because virtio_balloon hard-references
+# page_reporting_register (gated only by a runtime feature check, not #ifdef),
+# so we disable reporting by dropping VIRTIO_BALLOON_F_REPORTING from the
+# driver's advertised feature table → virtio_has_feature() is always false →
+# page_reporting_register is never reached. Fast-fail if the sed matches nothing.
 RUN cd linux-${KERNEL_VERSION} \
-    && sed -i '/select PAGE_REPORTING/d' drivers/virtio/Kconfig \
+    && _RB=$(grep -c VIRTIO_BALLOON_F_REPORTING drivers/virtio/virtio_balloon.c) \
+    && sed -i '/^[[:space:]]*VIRTIO_BALLOON_F_REPORTING,[[:space:]]*$/d' drivers/virtio/virtio_balloon.c \
+    && _RA=$(grep -c VIRTIO_BALLOON_F_REPORTING drivers/virtio/virtio_balloon.c) \
+    && { [ "$_RA" -lt "$_RB" ] || { echo "FATAL: did not drop VIRTIO_BALLOON_F_REPORTING from feature table (before=$_RB after=$_RA)" >&2; exit 1; }; } \
     && make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- defconfig \
     && ./scripts/kconfig/merge_config.sh -m .config /tmp/podroid_kernel.config \
     && ./scripts/kconfig/merge_config.sh -m .config /tmp/forced_builtin.config \
@@ -157,14 +167,12 @@ RUN cd linux-${KERNEL_VERSION} \
                   USB_XHCI_HCD USB_XHCI_PCI USB_STORAGE USB_UAS \
                   SCSI BLK_DEV_SD VFAT_FS EXFAT_FS \
                   DRM DRM_VIRTIO_GPU VIRTIO_INPUT \
-                  VIRTIO_BALLOON; do \
+                  VIRTIO_BALLOON PAGE_REPORTING; do \
            grep -q "^CONFIG_${opt}=y\$" .config \
                || { echo "FATAL: CONFIG_${opt} is not =y after merge" >&2; \
                     grep "CONFIG_${opt}" .config >&2; exit 1; }; \
        done \
-    && { ! grep -q "^CONFIG_PAGE_REPORTING=y" .config \
-         || { echo "FATAL: PAGE_REPORTING still =y — Kconfig select not removed" >&2; exit 1; }; } \
-    && echo "=== page-reporting DISABLED (balloon inflate/deflate kept) ===" \
+    && echo "=== balloon kept; F_REPORTING dropped from driver feature table (reporting off at runtime, links via PAGE_REPORTING=y) ===" \
     && echo "=== all critical options are built-in ===" \
     && make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j$(nproc) Image.gz
 
