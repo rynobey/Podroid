@@ -174,22 +174,19 @@ RUN cd linux-${KERNEL_VERSION} \
        done \
     && echo "=== balloon kept; F_REPORTING dropped from driver feature table (reporting off at runtime, links via PAGE_REPORTING=y) ===" \
     && echo "=== all critical options are built-in ===" \
-    && make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j$(nproc) Image.gz
+    && make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j$(nproc) Image.gz modules
 
-# No loadable modules: every driver/subsystem this VM needs is built in (=y),
-# so the full `make modules` only produced throwaway .ko that the prune then
-# deleted (verified 2026-05: the running guest's /lib/modules is empty and
-# `lsmod` loads nothing). We skip building modules entirely — saving ~half the
-# kernel build time and removing a large flake/OOM surface — and just stage the
-# versioned dir + built-in metadata so `modprobe <builtin>` and `depmod -a` at
-# boot stay happy and the rootfs COPY below still works.
 RUN cd linux-${KERNEL_VERSION} \
-    && KREL="$(cat include/config/kernel.release)" \
-    && MODDIR="/modules/lib/modules/${KREL}" \
-    && mkdir -p "$MODDIR" \
-    && for f in modules.builtin modules.builtin.modinfo modules.order; do \
-           if [ -f "$f" ]; then cp "$f" "$MODDIR/"; fi; \
-       done
+    && make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
+       INSTALL_MOD_PATH=/modules INSTALL_MOD_STRIP=1 modules_install \
+    && rm -f /modules/lib/modules/*/build /modules/lib/modules/*/source
+# Keep only modules init-podroid actually uses; everything else (DSA, pinctrl,
+# mediatek, renesas, hardware-specific drivers) is dead weight in a VM.
+# init-podroid runs `depmod -a` at boot so we don't need to regenerate modules.dep here.
+RUN cd /modules/lib/modules/*/kernel \
+    && find . -name '*.ko' | grep -vE '(^\./net/(bridge|netfilter|9p|ipv4/netfilter|ipv6/netfilter)/|^\./fs/(9p|fuse|overlayfs)/|^\./drivers/net/(tun|veth|virtio_net)\.ko|^\./drivers/block/virtio_blk\.ko|^\./drivers/char/hw_random/virtio-rng\.ko|^\./drivers/virtio/)' \
+    | xargs rm -f \
+    && find . -type d -empty -delete
 
 RUN mkdir -p /output \
     && cp linux-${KERNEL_VERSION}/arch/arm64/boot/Image.gz /output/vmlinuz-virt
