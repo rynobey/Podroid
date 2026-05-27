@@ -38,6 +38,17 @@ android {
     }
 
     signingConfigs {
+        // Fixed debug keystore committed to the repo so every CI build (any
+        // branch, any runner) signs with the same key — required for
+        // `adb install -r` in-place upgrades. A debug keystore is not a
+        // secret (well-known password "android"). Replaces the unreliable
+        // GitHub Actions keystore cache.
+        create("debugFixed") {
+            storeFile     = file("podroid-debug.keystore")
+            storePassword = "android"
+            keyAlias      = "androiddebugkey"
+            keyPassword   = "android"
+        }
         create("release") {
             val storePath = (project.findProperty("PODROID_RELEASE_STORE_FILE") as? String)
             if (storePath != null && file(storePath).exists()) {
@@ -51,6 +62,7 @@ android {
 
     buildTypes {
         debug {
+            signingConfig = signingConfigs.getByName("debugFixed")
             isDebuggable = true
             isJniDebuggable = true
             applicationIdSuffix = ".debug"
