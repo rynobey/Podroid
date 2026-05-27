@@ -129,9 +129,10 @@ RUN printf '%s\n' \
     'CONFIG_VIRTIO_INPUT=y' \
     'CONFIG_VIRTIO_BALLOON=y' \
     'CONFIG_MEMORY_BALLOON=y' \
-    'CONFIG_PAGE_REPORTING=y' \
+    '# CONFIG_PAGE_REPORTING is not set' \
     > /tmp/forced_builtin.config
 RUN cd linux-${KERNEL_VERSION} \
+    && sed -i '/select PAGE_REPORTING/d' drivers/virtio/Kconfig \
     && make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- defconfig \
     && ./scripts/kconfig/merge_config.sh -m .config /tmp/podroid_kernel.config \
     && ./scripts/kconfig/merge_config.sh -m .config /tmp/forced_builtin.config \
@@ -156,11 +157,14 @@ RUN cd linux-${KERNEL_VERSION} \
                   USB_XHCI_HCD USB_XHCI_PCI USB_STORAGE USB_UAS \
                   SCSI BLK_DEV_SD VFAT_FS EXFAT_FS \
                   DRM DRM_VIRTIO_GPU VIRTIO_INPUT \
-                  VIRTIO_BALLOON PAGE_REPORTING; do \
+                  VIRTIO_BALLOON; do \
            grep -q "^CONFIG_${opt}=y\$" .config \
                || { echo "FATAL: CONFIG_${opt} is not =y after merge" >&2; \
                     grep "CONFIG_${opt}" .config >&2; exit 1; }; \
        done \
+    && { ! grep -q "^CONFIG_PAGE_REPORTING=y" .config \
+         || { echo "FATAL: PAGE_REPORTING still =y — Kconfig select not removed" >&2; exit 1; }; } \
+    && echo "=== page-reporting DISABLED (balloon inflate/deflate kept) ===" \
     && echo "=== all critical options are built-in ===" \
     && make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j$(nproc) Image.gz modules
 
