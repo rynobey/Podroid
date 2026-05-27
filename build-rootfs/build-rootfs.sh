@@ -118,6 +118,8 @@ chmod +x "$ROOTFS/usr/local/bin/podroid-vsock-agent" 2>/dev/null || true
 # podroid-hostd is also COPY'd from the vsock-builder stage; same mode-bit guard.
 # The CLIs are argv[0]-dispatch symlinks onto the one multi-call binary.
 chmod +x "$ROOTFS/usr/local/bin/podroid-hostd" 2>/dev/null || true
+# podroid-overlay-normalize is COPY'd from the vsock-builder stage; mode-bit guard.
+chmod +x "$ROOTFS/usr/local/bin/podroid-overlay-normalize" 2>/dev/null || true
 ln -sf podroid-hostd "$ROOTFS/usr/local/bin/podroid-notify"
 ln -sf podroid-hostd "$ROOTFS/usr/local/bin/podroid-forward"
 ln -sf podroid-hostd "$ROOTFS/usr/local/bin/podroid-open"
@@ -131,6 +133,10 @@ cp /work/files/etc/conf.d/podroid "$ROOTFS/etc/conf.d/"
 mkdir -p "$ROOTFS/etc/podroid"
 cp /work/files/etc/podroid/forwards.conf "$ROOTFS/etc/podroid/forwards.conf"
 chmod 0644 "$ROOTFS/etc/podroid/forwards.conf"
+# System-version stamp: the migration anchor. Baked from the app versionCode at
+# build time; compared against /mnt/persist/.podroid/applied-version at boot.
+printf '%s\n' "${SYSTEM_VERSION:-0}" > "$ROOTFS/etc/podroid/system-version"
+chmod 0644 "$ROOTFS/etc/podroid/system-version"
 cp /work/files/etc/inittab "$ROOTFS/etc/inittab"
 cp /work/files/etc/rc.conf "$ROOTFS/etc/rc.conf"
 
