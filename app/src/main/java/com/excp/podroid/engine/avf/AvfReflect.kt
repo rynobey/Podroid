@@ -138,7 +138,28 @@ object AvfReflect {
      * Returns true if any setter accepted the call. Logs the outcome so
      * we can tell whether the device actually enables ballooning.
      */
+    /**
+     * Debug switch: 2026-05-28 logcat capture showed the VM boots cleanly
+     * for ~2s, then Android's onTrimMemory triggers `setMemoryBalloonByPercent`
+     * on the running VM → guest panics within 150 ms → STOP_REASON_REBOOT.
+     * The first-ever balloon command from the host crashes the guest.
+     * Strongest suspect: bf24738's sed on virtio_balloon.c (drops
+     * VIRTIO_BALLOON_F_REPORTING from the feature table) subtly broke the
+     * driver's normal balloon-inflate path. Flip to false to re-enable
+     * balloon once the kernel side is fixed.
+     */
+    private const val ENABLE_AUTO_BALLOON: Boolean = false
+
     fun tryEnableMemoryBalloon(builder: Any): Boolean {
+        if (!ENABLE_AUTO_BALLOON) {
+            android.util.Log.w(
+                "AvfReflect",
+                "tryEnableMemoryBalloon: SKIPPED (ENABLE_AUTO_BALLOON=false; " +
+                    "balloon was crashing the guest on first setMemoryBalloonByPercent — " +
+                    "see project_termux_proot / Podroid boot-regression notes)",
+            )
+            return false
+        }
         val candidates = listOf(
             "useAutoMemoryBalloon",      // Android 16+ (confirmed Pixel 10)
             "setAutoMemoryBalloon",      // hypothetical older revision
@@ -202,11 +223,15 @@ object AvfReflect {
                     .invoke(b, arrayOf("gfxstream-vulkan"))
             }
 
-            // renderer toggles — best-effort; tolerate any being absent
+            // renderer toggles — best-effort; tolerate any being absent.
+            // Glx added so X11 GL apps (the desktop over Xvnc) can accelerate;
+            // surfaceless stays on for the current headless/VNC path (a real
+            // DisplayConfig + surfaceless=false is the future native-view path).
             for ((name, value) in listOf(
                 "setRendererUseVulkan" to true,
                 "setRendererUseGles" to true,
                 "setRendererUseEgl" to true,
+                "setRendererUseGlx" to true,
                 "setRendererUseSurfaceless" to true,
             )) {
                 runCatching {
