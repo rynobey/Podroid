@@ -4,9 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Podroid: Linux containers on Android, no root required</title>
-  <meta name="description" content="Podroid runs Podman, Docker, and LXC on Android in a real Alpine Linux VM via QEMU with a custom Linux 7.0.5 kernel, plus an in-app X11 desktop for GUI apps. No root, no custom recovery, any ARM64 device." />
+  <meta name="description" content="Podroid runs Podman, Docker, and LXC on Android in a real Alpine Linux VM with a custom Linux 7.0.10 kernel - via QEMU on any ARM64 device, or hardware-accelerated AVF (pKVM) on supported Pixels - plus an in-app X11 desktop for GUI apps. No root, no custom recovery." />
   <meta property="og:title" content="Podroid: Linux containers on Android, no root required" />
-  <meta property="og:description" content="Spin up a real Alpine Linux VM with a full Podman runtime on any Android 9+ ARM64 device. No root, no Magisk, no AVF requirement." />
+  <meta property="og:description" content="Spin up a real Alpine Linux VM with a full Podman runtime on any Android 9+ ARM64 device. QEMU software emulation everywhere, or near-native AVF (pKVM) acceleration on supported Pixels. No root, no Magisk." />
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://extv.github.io/Podroid/" />
   <meta property="og:image" content="https://extv.github.io/Podroid/logo.png" />
@@ -205,7 +205,7 @@
 
     .features-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      grid-template-columns: repeat(3, 1fr);
       gap: 1px;
       background: var(--border);
       border: 1px solid var(--border);
@@ -247,6 +247,21 @@
       font-size: 0.858rem;
       color: var(--text-dim);
       line-height: 1.65;
+    }
+
+    /* Blank cells that complete the last grid row so trailing cells don't
+       show the container's border colour. Card-coloured, non-interactive. */
+    .feature-card.filler { pointer-events: none; }
+
+    /* 13 cards: 3-col leaves 2 trailing cells, 2-col leaves 1, 1-col leaves 0.
+       Show both fillers at 3-col, one at 2-col, none at 1-col. */
+    @media (max-width: 900px) {
+      .features-grid { grid-template-columns: repeat(2, 1fr); }
+      .feature-card.filler-b { display: none; }
+    }
+    @media (max-width: 600px) {
+      .features-grid { grid-template-columns: 1fr; }
+      .feature-card.filler { display: none; }
     }
 
     /* ── COMPARISON ────────────────────────────────────── */
@@ -593,7 +608,7 @@
         <div class="feature-icon">
           <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg>
         </div>
-        <h3>Custom Linux 7.0.5 Kernel</h3>
+        <h3>Custom Linux 7.0.10 Kernel</h3>
         <p>Compiled from scratch with netfilter, bridge, overlayfs, veth, IPVS, VXLAN, IPsec, cgroup v2, and binfmt_misc all built-in. Docker's <code>check-config.sh</code> reports zero fixable complaints.</p>
       </div>
 
@@ -610,7 +625,7 @@
           <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
         </div>
         <h3>Port Forwarding</h3>
-        <p>Expose any VM port to your Android device at runtime via QMP control. Run a web server, database, or API and hit it from your phone's browser.</p>
+        <p>Expose any VM port to your Android device at runtime. Run a web server, database, or API and hit it from your phone's browser — from Settings, or with <code>podroid-forward</code> right inside the VM.</p>
       </div>
 
       <div class="feature-card">
@@ -618,7 +633,15 @@
           <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.63 3.42 2 2 0 0 1 3.6 1.24h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.84a16 16 0 0 0 6.29 6.29l.96-.96a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
         </div>
         <h3>Built-in SSH</h3>
-        <p>Dropbear SSH server on port 9922 (configurable). Connect from your laptop, VS Code Remote, or any SSH client on the same network.</p>
+        <p>Dropbear SSH server, toggled on in the setup wizard or Settings, reachable on host port 9922. Connect from your laptop, VS Code Remote, or any SSH client on the same network.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">
+          <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+        </div>
+        <h3>Notify from the VM</h3>
+        <p>Run <code>podroid-notify "build done"</code> inside the guest and it pops an Android notification — with a title, priority, and an <code>--id</code> to update one in place. Perfect for long builds, downloads, and cron jobs. Works on both backends.</p>
       </div>
 
       <div class="feature-card">
@@ -626,7 +649,7 @@
           <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
         </div>
         <h3>Persistent &amp; Fast</h3>
-        <p>Overlayfs over a persistent ext4 image. Containers, packages, and configs survive reboots. ZRAM swap gives 2× effective RAM. Boots in 6–30 seconds.</p>
+        <p>Overlayfs over a persistent ext4 image. Containers, packages, and configs survive reboots. ZRAM lz4 swap at 1.5× RAM adds headroom against the OOM killer. Boots in 6–30 seconds.</p>
       </div>
 
       <div class="feature-card">
@@ -635,6 +658,14 @@
         </div>
         <h3>In-app X11 Desktop</h3>
         <p>Tap the monitor icon in the terminal and an in-app viewer opens, talking RFB to <code>Xvnc</code> inside the VM. Touch becomes mouse, soft-keyboard becomes keyboard, and PCM audio streams from PulseAudio. Run <code>firefox</code>, <code>xterm</code>, anything from Alpine.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">
+          <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="12" cy="3" r="1.4"/><path d="M12 4.4V21"/><path d="M8.5 10.5 12 7l3.5 3.5"/><rect x="9" y="11" width="6" height="4.5" rx="1"/><path d="M7 16.5h10"/></svg>
+        </div>
+        <h3>USB device passthrough</h3>
+        <p>Plug a real USB device (Wi-Fi adapter, storage, serial adapter, audio interface) into the running VM straight from Android, with no root and no device-filter XML. Flip the opt-in toggle in Settings, attach the device, grant permission once, and it shows up inside the guest. QEMU backend.</p>
       </div>
 
       <div class="feature-card">
@@ -650,8 +681,27 @@
           <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
         </div>
         <h3>Tuned for Software Emulation</h3>
-        <p>KVM needs root, so we leaned hard on TCG instead. Multi-thread TCG with a 512 MB translation cache, a dedicated I/O thread for the rootfs disk, ZRAM lz4 swap at half RAM, and <code>mitigations=off</code> in the guest combine for a 5–15% CPU win. Native 16 KB page alignment, so Pixel 8/9/10 are first-class.</p>
+        <p>KVM needs root, so we leaned hard on TCG instead. Multi-thread TCG with a 512 MB translation cache, a dedicated I/O thread for the rootfs disk, ZRAM lz4 swap at 1.5× RAM, and <code>mitigations=off</code> in the guest combine for a 5–15% CPU win. Native 16 KB page alignment, so Pixel 8/9/10 are first-class.</p>
       </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">
+          <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/></svg>
+        </div>
+        <h3>Hardware acceleration (AVF)</h3>
+        <p>On a Pixel that ships pKVM, switch the backend to the Android Virtualization Framework and the same Alpine guest runs on real CPU cores - no TCG, near-native speed. Two one-time <code>adb</code> grants, then it's automatic. Falls back to QEMU everywhere else. <a href="guide/backends.html">Backends guide</a>.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">
+          <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+        </div>
+        <h3>English &amp; 中文</h3>
+        <p>Fully localized interface in English and Chinese, switchable in Settings or following your device language.</p>
+      </div>
+
+      <div class="feature-card filler filler-a" aria-hidden="true"></div>
+      <div class="feature-card filler filler-b" aria-hidden="true"></div>
 
     </div>
   </div>
@@ -704,7 +754,7 @@
           </tr>
           <tr>
             <td class="row-label">VM isolation</td>
-            <td class="col-podroid"><span class="check">✓ QEMU</span></td>
+            <td class="col-podroid"><span class="check">✓ QEMU + AVF</span></td>
             <td><span class="cross">✗ shared kernel</span></td>
             <td><span class="check">✓ AVF</span></td>
           </tr>
@@ -716,7 +766,7 @@
           </tr>
           <tr>
             <td class="row-label">Custom kernel</td>
-            <td class="col-podroid"><span class="check">✓ Linux 7.0.5</span></td>
+            <td class="col-podroid"><span class="check">✓ Linux 7.0.10</span></td>
             <td><span class="cross">✗ host kernel</span></td>
             <td><span class="check">✓</span></td>
           </tr>
@@ -767,7 +817,7 @@
   <div class="container">
     <p class="section-label">Architecture</p>
     <h2>How it works</h2>
-    <p class="section-sub">Four sockets, one VM, zero root. Here's what happens when you tap Start.</p>
+    <p class="section-sub">Five sockets, one VM, zero root. Here's what happens when you tap Start.</p>
 
     <div class="arch-diagram"><span class="arch-white">┌────────────────────── Android App (Compose) ─────────────────────────┐
 │                                                                      │
@@ -782,7 +832,7 @@
             │   │   /sbin/init (busybox)           │    │
             │   │   OpenRC (PID 1)                 │    │
             │   │  ┌──────────┐  ┌──────────────┐  │    │
-            │   │  │ Podman + │  │  Linux 7.0.5 │  │    │
+            │   │  │ Podman + │  │ Linux 7.0.10 │  │    │
             └──►│  │  Docker  │  │   (custom)   │  │◄───┘
    boot stages  │  │ + LXC    │  └──────────────┘  │  libpodroid-bridge.so
                 │  └──────────┘                    │  PTY ↔ virtio-console
@@ -794,6 +844,7 @@
 <span class="arch-green">terminal.sock</span> ↔ hvc0     →  primary shell I/O
 <span class="arch-blue">ctrl.sock    </span> ↔ hvc1     →  debounced SIGWINCH resize signals
 <span class="arch-white">serial.sock  </span> ↔ ttyAMA0  →  boot log stream → boot stage detection
+<span class="arch-green">host.sock    </span> ↔ hvc2     →  guest → Android bridge (notify / port forwards)
 qmp.sock               →  runtime port-forward control</div>
 
     <div class="steps">
@@ -801,7 +852,7 @@ qmp.sock               →  runtime port-forward control</div>
         <div class="step-num">1</div>
         <div class="step-body">
           <h4>QEMU loads the kernel</h4>
-          <p>Custom Linux 7.0.5 + a tiny initramfs and an Alpine squashfs are extracted from APK assets on first launch.</p>
+          <p>Custom Linux 7.0.10 + a tiny initramfs and an Alpine squashfs are extracted from APK assets on first launch.</p>
         </div>
       </div>
       <div class="step">
@@ -905,14 +956,28 @@ qmp.sock               →  runtime port-forward control</div>
       <details>
         <summary>How is this different from Google Terminal / AVF?</summary>
         <div class="faq-answer">
-          Google's Terminal app uses Android Virtualization Framework (AVF), a system-level hypervisor available only on recent Pixel devices. It gives you a Debian VM but no container runtime and limited configurability. Podroid uses QEMU TCG (software emulation), so it works on <em>any</em> ARM64 Android 9+ device, not just Pixels, and ships with three container engines, port forwarding, SSH, and a configurable terminal.
+          Google's Terminal app uses Android Virtualization Framework (AVF), a system-level hypervisor available only on recent Pixel devices. It gives you a Debian VM but no container runtime and limited configurability. Podroid runs on <em>any</em> ARM64 Android 9+ device via QEMU TCG (software emulation), and on a Pixel that ships pKVM it can use AVF too for near-native speed - the same Alpine guest either way. It ships with three container engines, port forwarding, SSH, an in-app X11 desktop, and a configurable terminal.
         </div>
       </details>
 
       <details>
         <summary>Is performance usable? QEMU is slow.</summary>
         <div class="faq-answer">
-          TCG is software emulation, so compute-heavy workloads are slower than native. Podroid ships several optimizations: a 256–512 MB translation cache, a dedicated I/O thread for virtio-blk (big win for image pulls), ZRAM swap for 2× effective RAM, and <code>mitigations=off</code> in the guest kernel for a 5–15% CPU gain. For typical dev tasks like running a web server, a database, or CLI tools, it's very usable.
+          TCG is software emulation, so compute-heavy workloads are slower than native. Podroid ships several optimizations: a 256–512 MB translation cache, a dedicated I/O thread for virtio-blk (big win for image pulls), ZRAM lz4 swap at 1.5× RAM, and <code>mitigations=off</code> in the guest kernel for a 5–15% CPU gain. For typical dev tasks like running a web server, a database, or CLI tools, it's very usable. On a Pixel that ships pKVM you can switch to the <a href="guide/backends.html">AVF backend</a> for near-native CPU speed.
+        </div>
+      </details>
+
+      <details>
+        <summary>Can Podroid use hardware acceleration instead of emulation?</summary>
+        <div class="faq-answer">
+          Yes, on devices that ship pKVM (Pixel 8 and later, and any other device whose maker enables it). Set the backend to AVF in Settings and Podroid runs the guest on real CPU cores through the Android Virtualization Framework - no TCG translation, near-native speed. It needs two one-time <code>adb</code> permission grants (or Shizuku, no PC required); after that, Auto mode picks AVF when available and falls back to QEMU everywhere else. Still no root. See the <a href="guide/backends.html">Backends guide</a> for setup.
+        </div>
+      </details>
+
+      <details>
+        <summary>Can I do things on Android from inside the VM?</summary>
+        <div class="faq-answer">
+          Yes. Two CLIs ship in the guest: <code>podroid-notify "build done"</code> pops an Android notification (with a title, priority, and an <code>--id</code> to update one in place), and <code>podroid-forward 8888 80</code> adds a port-forward rule without opening Settings. Both work on either backend and are handy for long builds, downloads, and cron jobs. See <a href="guide/networking.html">Networking &amp; ports</a>.
         </div>
       </details>
 
@@ -931,6 +996,13 @@ qmp.sock               →  runtime port-forward control</div>
       </details>
 
       <details>
+        <summary>Can I plug in a USB device?</summary>
+        <div class="faq-answer">
+          Yes, on the QEMU backend. Enable <strong>USB passthrough</strong> in Settings (it adds a USB controller at boot, so set it while the VM is stopped), then attach a device through a USB-C hub or OTG adapter. Android asks for permission once per device, and it then appears inside the guest while Podroid is running. Works with Wi-Fi adapters, storage, serial adapters, audio interfaces, and more. Not available on the AVF backend, which has no channel to hand the device to the VM.
+        </div>
+      </details>
+
+      <details>
         <summary>How much storage does it use?</summary>
         <div class="faq-answer">
           The APK is ~200 MB (QEMU + kernel + initramfs + Alpine squashfs + fonts). On first launch you choose a VM disk size between 2 GB and 64 GB; this is a sparse <code>storage.img</code> that only grows as you pull images and install packages.
@@ -940,7 +1012,7 @@ qmp.sock               →  runtime port-forward control</div>
       <details>
         <summary>Can I connect from my laptop over SSH?</summary>
         <div class="faq-answer">
-          Yes. Dropbear SSH runs on port 9922 by default (configurable in Settings). As long as your laptop and phone are on the same network, <code>ssh root@&lt;phone-ip&gt; -p 9922</code> gives you a remote shell. Useful for VS Code Remote or any SSH client.
+          Yes. Turn SSH on in the setup wizard or later in Settings, and Dropbear is reachable on host port 9922 (it forwards to the guest's port 22; an unprivileged Android app can't bind ports below 1024, which is why it's 9922 and not 22). As long as your laptop and phone are on the same network, <code>ssh root@&lt;phone-ip&gt; -p 9922</code> gives you a remote shell. Useful for VS Code Remote or any SSH client.
         </div>
       </details>
 

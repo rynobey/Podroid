@@ -36,6 +36,7 @@
         <li><a href="backends.html">Backends: QEMU &amp; AVF</a></li>
         <li><a href="networking.html">Networking &amp; ports</a></li>
         <li><a href="packages.html">Packages &amp; services</a></li>
+        <li><a href="migrations.html">Updates &amp; migrations</a></li>
         <li><a href="desktop.html">Desktops &amp; X11 viewer</a></li>
         <li><a href="settings.html" class="active">Terminal &amp; settings</a></li>
       </ul>
@@ -81,6 +82,11 @@
             <td>Dynamic color / Material You</td>
             <td>Toggle</td>
             <td>Uses your wallpaper's colors as the app accent palette. Android 12+ only.</td>
+          </tr>
+          <tr>
+            <td>Language</td>
+            <td>System default / English / 中文 (Chinese)</td>
+            <td>App interface language. Defaults to following the device language; changing it re-renders the UI right away.</td>
           </tr>
         </tbody>
       </table>
@@ -137,12 +143,17 @@
           <tr>
             <td>Port forwards</td>
             <td>Add / Remove</td>
-            <td>Add TCP, UDP, or both forwarding rules. Changes apply live via QMP without a VM restart.</td>
+            <td>Add TCP, UDP, or both forwarding rules. Changes apply live via QMP without a VM restart. Can also be managed from inside the VM with <code>podroid-forward</code> (see <a href="networking.html">Networking</a>).</td>
           </tr>
           <tr>
             <td>Downloads sharing</td>
             <td>Toggle</td>
             <td>Shares the Android Downloads folder into the VM as a virtio-fs mount. May be a no-op on some AVF devices. Can be unstable on some QEMU configurations; disable it if the VM crashes on boot.</td>
+          </tr>
+          <tr>
+            <td>USB passthrough</td>
+            <td>Toggle</td>
+            <td>Passes a physically attached USB device (Wi-Fi adapter, storage, serial adapter, audio interface) into the VM, with no root. QEMU backend only. It adds a USB controller at boot, so the toggle takes effect only after a VM restart and is locked while the VM is running. When it is on, each device you attach prompts for permission once and then appears inside the guest while the app runs.</td>
           </tr>
         </tbody>
       </table>
@@ -198,7 +209,8 @@
         <a class="prev" href="desktop.html"><span class="dir">Previous</span>← Desktops &amp; X11 viewer</a>
         <a class="next" href="limitations.html"><span class="dir">Next</span>Limitations &amp; troubleshooting →</a>
       </div>
-      <p class="docfoot">Podroid is free software (GPL). Docs for v1.2.1. Found something inaccurate? <a href="https://github.com/ExTV/Podroid/issues">Open an issue</a>.</p>
+      <p class="docfoot">Podroid is free software (GPL). Docs for v1.2.3. Found something inaccurate? <a href="https://github.com/ExTV/Podroid/issues">Open an issue</a>.</p>
+
     </main>
   </div>
 

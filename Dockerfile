@@ -14,7 +14,7 @@
 # SECTION 0: Custom Kernel Build (aarch64) — Image + modules
 # ==============================================================================
 FROM debian:bookworm AS kernel-builder
-ARG KERNEL_VERSION=7.0.5
+ARG KERNEL_VERSION=7.0.10
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
     wget ca-certificates xz-utils make gcc gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu \

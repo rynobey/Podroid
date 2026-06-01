@@ -103,6 +103,8 @@ cp /work/files/etc/init.d/podroid-resize    "$ROOTFS/etc/init.d/"
 cp /work/files/etc/init.d/podroid-ready     "$ROOTFS/etc/init.d/"
 cp /work/files/etc/init.d/podroid-x11       "$ROOTFS/etc/init.d/"
 cp /work/files/etc/init.d/podroid-vsock     "$ROOTFS/etc/init.d/"
+cp /work/files/etc/init.d/podroid-hostd     "$ROOTFS/etc/init.d/"
+cp /work/files/etc/init.d/podroid-migrate   "$ROOTFS/etc/init.d/"
 chmod +x "$ROOTFS/etc/init.d/podroid-"*
 
 # Copy /usr/local/bin scripts (resize daemon + login wrapper + getty selector)
@@ -114,6 +116,17 @@ cp /work/files/usr/local/bin/podroid-getty  "$ROOTFS/usr/local/bin/"
 # sure it's executable (cross-arch COPY can lose the mode bit on some buildkit
 # versions).
 chmod +x "$ROOTFS/usr/local/bin/podroid-vsock-agent" 2>/dev/null || true
+# podroid-hostd is also COPY'd from the vsock-builder stage; same mode-bit guard.
+# The CLIs are argv[0]-dispatch symlinks onto the one multi-call binary.
+chmod +x "$ROOTFS/usr/local/bin/podroid-hostd" 2>/dev/null || true
+# podroid-overlay-normalize is COPY'd from the vsock-builder stage; mode-bit guard.
+chmod +x "$ROOTFS/usr/local/bin/podroid-overlay-normalize" 2>/dev/null || true
+ln -sf podroid-hostd "$ROOTFS/usr/local/bin/podroid-notify"
+ln -sf podroid-hostd "$ROOTFS/usr/local/bin/podroid-forward"
+ln -sf podroid-hostd "$ROOTFS/usr/local/bin/podroid-open"
+ln -sf podroid-hostd "$ROOTFS/usr/local/bin/podroid-power"
+ln -sf podroid-hostd "$ROOTFS/usr/local/bin/podroid-headless"
+ln -sf podroid-hostd "$ROOTFS/usr/local/bin/podroid-server"
 chmod +x "$ROOTFS/usr/local/bin/podroid-"*
 mkdir -p "$ROOTFS/etc/conf.d"
 cp /work/files/etc/conf.d/podroid "$ROOTFS/etc/conf.d/"
@@ -121,6 +134,13 @@ cp /work/files/etc/conf.d/podroid "$ROOTFS/etc/conf.d/"
 mkdir -p "$ROOTFS/etc/podroid"
 cp /work/files/etc/podroid/forwards.conf "$ROOTFS/etc/podroid/forwards.conf"
 chmod 0644 "$ROOTFS/etc/podroid/forwards.conf"
+# Migration scripts dir (seeded with its README; per-version <v>.sh added over time).
+mkdir -p "$ROOTFS/etc/podroid/migrations"
+cp /work/files/etc/podroid/migrations/README "$ROOTFS/etc/podroid/migrations/README"
+# System-version stamp: the migration anchor. Baked from the app versionCode at
+# build time; compared against /mnt/persist/.podroid/applied-version at boot.
+printf '%s\n' "${SYSTEM_VERSION:-0}" > "$ROOTFS/etc/podroid/system-version"
+chmod 0644 "$ROOTFS/etc/podroid/system-version"
 cp /work/files/etc/inittab "$ROOTFS/etc/inittab"
 cp /work/files/etc/rc.conf "$ROOTFS/etc/rc.conf"
 
@@ -165,7 +185,7 @@ mkdir -p "$ROOTFS/etc/runlevels/default" "$ROOTFS/etc/runlevels/boot"
 # Guard each link: a dangling symlink (e.g. dnsmasq.lxcbr0, which lxc-bridge
 # may ship only as dnsmasq config and not an init script) makes OpenRC log
 # an error every boot and stalls podroid-ready's `after *` on a phantom.
-for svc in podroid-bootstrap podroid-network podroid-resize dropbear docker lxc dnsmasq.lxcbr0 podroid-x11 podroid-vsock podroid-ready; do
+for svc in podroid-migrate podroid-bootstrap podroid-network podroid-resize dropbear docker lxc dnsmasq.lxcbr0 podroid-x11 podroid-vsock podroid-hostd podroid-ready; do
     if [ -e "$ROOTFS/etc/init.d/$svc" ]; then
         ln -sf "/etc/init.d/$svc" "$ROOTFS/etc/runlevels/default/$svc"
     else

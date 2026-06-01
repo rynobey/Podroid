@@ -36,6 +36,7 @@
         <li><a href="backends.html">Backends: QEMU &amp; AVF</a></li>
         <li><a href="networking.html" class="active">Networking &amp; ports</a></li>
         <li><a href="packages.html">Packages &amp; services</a></li>
+        <li><a href="migrations.html">Updates &amp; migrations</a></li>
         <li><a href="desktop.html">Desktops &amp; X11 viewer</a></li>
         <li><a href="settings.html">Terminal &amp; settings</a></li>
       </ul>
@@ -122,6 +123,57 @@ podman run -d -p 8080:80 nginx
 # Then from your laptop on the same Wi-Fi:</span>
 curl http://&lt;phone-ip&gt;:8080</code></pre>
 
+      <h2>Talking back to Android from the guest</h2>
+      <p>Several command-line tools ship inside the VM so scripts and shell sessions can reach the Android side directly, without the in-app UI. They all work on the QEMU and AVF backends.</p>
+
+      <h3><code>podroid-forward</code> - manage port forwards from the shell</h3>
+      <pre><code><span class="c"># forward phone :8888 -&gt; guest :80</span>
+podroid-forward add 8888 80 tcp
+<span class="c"># shorthand for "add ... tcp"</span>
+podroid-forward 8888 80
+<span class="c"># list current rules</span>
+podroid-forward list
+<span class="c"># drop a rule</span>
+podroid-forward remove 8888 tcp</code></pre>
+      <p>Rules created this way are identical to ones added in Settings: they apply live, persist across reboots, and appear in the Settings list. Both TCP and UDP work on either backend.</p>
+
+      <h3><code>podroid-notify</code> - post an Android notification</h3>
+      <pre><code><span class="c"># simplest form</span>
+podroid-notify "build finished"
+<span class="c"># with a title and priority (low | normal | high)</span>
+podroid-notify --title Podroid --priority high "container crashed"
+<span class="c"># reuse --id to update the same notification in place</span>
+podroid-notify --id 7 "progress 50%"</code></pre>
+      <p>Handy for long builds, downloads, cron jobs and container health alerts. Tapping the notification opens Podroid. Requires the standard Android notification permission, requested at first run.</p>
+
+      <h3><code>podroid-open</code> - open a URL on the phone</h3>
+      <pre><code><span class="c"># open a link in the phone's default browser</span>
+podroid-open https://github.com/ExTV/Podroid</code></pre>
+      <p>Hands the URL to Android's <code>ACTION_VIEW</code> intent, so it opens in whatever app handles it on the phone. Only <code>http</code> and <code>https</code> URLs are accepted.</p>
+
+      <h3><code>podroid-power</code> - control the VM from inside the guest</h3>
+      <pre><code><span class="c"># stop the VM cleanly - the app returns to its stopped state</span>
+podroid-power stop
+<span class="c"># restart the VM</span>
+podroid-power restart
+<span class="c"># print the current VM state, e.g. Running</span>
+podroid-power status</code></pre>
+      <p>A clean lifecycle hook routed through the app, unlike an in-guest <code>poweroff</code> (which the app would treat as an unexpected exit). Useful for scripts that need to cycle the VM, or to shut it down from an SSH session.</p>
+
+      <h3><code>podroid-server</code> - server (headless) mode</h3>
+      <pre><code><span class="c"># turn server mode on - the screen goes black at minimum brightness</span>
+podroid-server on
+<span class="c"># turn it back off</span>
+podroid-server off
+<span class="c"># query state (on | off)</span>
+podroid-server status</code></pre>
+      <p>Server mode keeps the VM running behind a pure-black, minimum-brightness full-screen overlay - for leaving the phone on a headless workload with minimal OLED draw and burn-in. The screen stays on (so the system does not kill the VM) but shows nothing. Exit by <strong>holding the screen for three seconds</strong>, or run <code>podroid-server off</code>. The same toggle lives in the terminal's top bar. <code>podroid-headless</code> is an alias for <code>podroid-server</code>.</p>
+
+      <div class="callout note">
+        <span class="label">How it works</span>
+        <p>A small guest daemon (<code>podroid-hostd</code>) relays each request to the Android side over the same control transport the app already uses - a virtio-console port on QEMU, vsock on AVF - which then performs the requested action: post a notification, write a port-forward rule, open a URL, or control the VM. Any process that can reach the guest socket can use these, so they work from a container too if you bind-mount <code>/run/podroid-host.sock</code> into it.</p>
+      </div>
+
       <h2>LAN reachability</h2>
       <p>All port forward listeners bind <code>0.0.0.0</code>, not <code>127.0.0.1</code>. This means any device on the same Wi-Fi network can reach the phone by its local IP address. The phone's current IP is shown in <strong>Settings</strong>.</p>
 
@@ -148,7 +200,7 @@ curl http://&lt;phone-ip&gt;:8080</code></pre>
 
       <div class="callout warn">
         <span class="label">Workaround</span>
-        <p>Forward to a high host port instead of the standard one: map host <code>8080</code> to guest <code>80</code>, and host <code>8443</code> to guest <code>443</code>. Services inside the guest can still listen on port 80 or 443 as usual - only the host-side port is restricted.</p>
+        <p>Forward to a high host port instead of the standard one: map host <code>8080</code> to guest <code>80</code>, and host <code>8443</code> to guest <code>443</code>. A daemon running as guest-root can still listen on 80 or 443. A <strong>rootless Podman or Docker</strong> container is the exception: its published port is also subject to the &ge;1024 limit inside the guest, so publish to a high guest port too - e.g. a Pi-hole DNS container on guest <code>5353/udp</code>, forwarded to host <code>5353</code>, with LAN clients pointed at <code>&lt;phone-ip&gt;:5353</code>.</p>
       </div>
 
       <pre><code><span class="c"># Forward a web server on guest :80 to a high host port</span>
@@ -158,18 +210,19 @@ curl http://&lt;phone-ip&gt;:8080</code></pre>
 <span class="p">$</span> curl http://&lt;phone-ip&gt;:8080</code></pre>
 
       <h2>Port forwarding on AVF</h2>
-      <p>On the AVF backend, port forwarding is implemented over <strong>vsock</strong> rather than SLIRP hostfwd. Each rule creates a TCP listener on <code>0.0.0.0:hostPort</code> on the Android side, which is bridged to a vsock port on the guest via the <code>podroid-vsock-agent</code> service. The privileged-port limit applies here too, for the same reason.</p>
+      <p>On the AVF backend, port forwarding is implemented over <strong>vsock</strong> rather than SLIRP hostfwd. Each rule creates a listener on <code>0.0.0.0:hostPort</code> on the Android side, which is bridged to a vsock port on the guest via the <code>podroid-vsock-agent</code> service. The privileged-port limit applies here too, for the same reason.</p>
 
       <div class="callout note">
         <span class="label">UDP on AVF</span>
-        <p>UDP rules are ignored on the AVF backend. The vsock transport is TCP-only. If you need UDP forwarding, use the QEMU backend.</p>
+        <p>UDP forwarding works on both backends. Because vsock is a stream transport, each inbound UDP datagram is length-framed and carried over a per-client vsock connection, then delivered to the guest as a real UDP datagram - so a guest DNS server such as Pi-hole is reachable over UDP. Idle flows are reaped automatically, and the number of concurrent client flows is capped to bound resource use.</p>
+        <p>The privileged-port limit applies at both ends: an unprivileged Android app can't bind a host port below 1024, and rootless Podman can't publish a privileged port inside the guest either. So run a DNS server like Pi-hole on a high port - for example host <code>5353/udp</code> to guest <code>5353/udp</code> - and point clients at <code>&lt;phone-ip&gt;:5353</code>.</p>
       </div>
 
       <div class="pagenav">
         <a class="prev" href="backends.html"><span class="dir">Previous</span>&larr; Backends: QEMU &amp; AVF</a>
         <a class="next" href="packages.html"><span class="dir">Next</span>Packages &amp; services &rarr;</a>
       </div>
-      <p class="docfoot">Podroid is free software (GPL). Docs for v1.2.1. Found something inaccurate? <a href="https://github.com/ExTV/Podroid/issues">Open an issue</a>.</p>
+      <p class="docfoot">Podroid is free software (GPL). Docs for v1.2.3. Found something inaccurate? <a href="https://github.com/ExTV/Podroid/issues">Open an issue</a>.</p>
     </main>
   </div>
 

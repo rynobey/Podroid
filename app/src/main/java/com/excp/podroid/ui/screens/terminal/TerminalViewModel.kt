@@ -64,6 +64,7 @@ class TerminalViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val engine: VmEngine,
     private val settingsRepository: SettingsRepository,
+    private val headlessModeManager: com.excp.podroid.engine.hostbridge.HeadlessModeManager,
 ) : ViewModel() {
 
     val vmState: StateFlow<VmState> = engine.state
@@ -94,6 +95,8 @@ class TerminalViewModel @Inject constructor(
     // Quick settings helpers (non-persistent)
     fun openQuickSettings() { _showQuickSettings.value = true }
     fun closeQuickSettings() { _showQuickSettings.value = false }
+
+    fun enableServerMode() = headlessModeManager.setActive(true)
 
     fun updateShowExtraKeys(value: Boolean) {
         viewModelScope.launch { settingsRepository.setShowExtraKeys(value) }

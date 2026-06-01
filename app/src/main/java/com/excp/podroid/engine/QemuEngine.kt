@@ -84,6 +84,7 @@ class QemuEngine @Inject constructor(
     val serialSockPath: String get() = "${context.filesDir.absolutePath}/serial.sock"
     val terminalSockPath: String get() = "${context.filesDir.absolutePath}/terminal.sock"
     val ctrlSockPath: String get() = "${context.filesDir.absolutePath}/ctrl.sock"
+    val hostSockPath: String get() = "${context.filesDir.absolutePath}/host.sock"
 
     /**
      * Last QEMU process exit code (null until it exits) + a bounded tail of
@@ -279,6 +280,7 @@ class QemuEngine @Inject constructor(
         File(terminalSockPath).delete()
         File(ctrlSockPath).delete()
         File(qmpSocketPath).delete()
+        File(hostSockPath).delete()
 
         try {
             val cmd = buildCommand(qemuExe, portForwards, config)
@@ -438,6 +440,9 @@ class QemuEngine @Inject constructor(
         }, "podroid-qemu-stop").apply { isDaemon = true }.start()
     }
 
+    override fun openHostTransport(): com.excp.podroid.engine.hostbridge.HostTransport? =
+        com.excp.podroid.engine.hostbridge.QemuHostTransport.open(hostSockPath)
+
     override suspend fun addPortForward(rule: PortForwardRule) {
         if (_state.value !is VmState.Running) return
         val qmp = qmpClient ?: return
@@ -591,6 +596,10 @@ class QemuEngine @Inject constructor(
         args += "-device";  args += "virtconsole,chardev=term0,name=org.podroid.term"
         args += "-chardev"; args += "socket,id=ctrl0,path=$ctrlSockPath,server=on,wait=off"
         args += "-device";  args += "virtconsole,chardev=ctrl0,name=org.podroid.ctrl"
+
+        // hvc2 = host bridge (guest podroid-hostd <-> Android host.sock)
+        args += "-chardev"; args += "socket,id=host0,path=$hostSockPath,server=on,wait=off"
+        args += "-device";  args += "virtconsole,chardev=host0,name=org.podroid.host"
 
         args += "-display"; args += "none"
         args += "-qmp";     args += "unix:$qmpSocketPath,server,nowait"

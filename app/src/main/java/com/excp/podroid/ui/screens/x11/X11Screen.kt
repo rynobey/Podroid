@@ -80,6 +80,7 @@ import androidx.compose.ui.input.pointer.isTertiaryPressed
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.res.stringResource
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -93,6 +94,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.excp.podroid.R
 import com.excp.podroid.ui.components.PodroidTopBar
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeoutOrNull
@@ -365,41 +367,41 @@ fun X11Screen(
                 // keyboard, AndroidView (weight=1) shrinks to fill the gap.
                 .windowInsetsPadding(WindowInsets.ime),
         ) {
-        if (!fullscreen) {
-            PodroidTopBar(
-                title = "X11",
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                actions = {
-                    IconButton(onClick = { fullscreen = true }) {
-                        Icon(Icons.Default.Fullscreen, contentDescription = "Fullscreen")
-                    }
-                    IconButton(onClick = { showSettings = true }) {
-                        Icon(Icons.Default.Tune, contentDescription = "Settings")
-                    }
-                    IconButton(onClick = {
-                        focusRequester.requestFocus()
-                        keyboardController?.show()
-                    }) {
-                        Icon(Icons.Default.Keyboard, contentDescription = "Keyboard")
-                    }
-                    IconButton(onClick = onNavigateToTerminal) {
-                        Icon(
-                            Icons.Default.DesktopWindows,
-                            contentDescription = "Terminal",
-                            tint = MaterialTheme.colorScheme.primary,
-                        )
-                    }
-                },
-            )
-        }
+            if (!fullscreen) {
+                PodroidTopBar(
+                    title = stringResource(R.string.x11_title),
+                    navigationIcon = {
+                        IconButton(onClick = onNavigateBack) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
+                        }
+                    },
+                    actions = {
+                        IconButton(onClick = { fullscreen = true }) {
+                            Icon(Icons.Default.Fullscreen, contentDescription = stringResource(R.string.fullscreen))
+                        }
+                        IconButton(onClick = { showSettings = true }) {
+                            Icon(Icons.Default.Tune, contentDescription = stringResource(R.string.settings))
+                        }
+                        IconButton(onClick = {
+                            focusRequester.requestFocus()
+                            keyboardController?.show()
+                        }) {
+                            Icon(Icons.Default.Keyboard, contentDescription = stringResource(R.string.keyboard))
+                        }
+                        IconButton(onClick = onNavigateToTerminal) {
+                            Icon(
+                                Icons.Default.DesktopWindows,
+                                contentDescription = stringResource(R.string.terminal),
+                                tint = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                    },
+                )
+            }
 
-        if (showSettings) {
-            X11SettingsSheet(viewModel = viewModel, onDismiss = { showSettings = false })
-        }
+            if (showSettings) {
+                X11SettingsSheet(viewModel = viewModel, onDismiss = { showSettings = false })
+            }
 
         when (val state = connection) {
             X11ConnectionState.Connecting,
@@ -407,7 +409,7 @@ fun X11Screen(
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
                     Text(
-                        "Connecting to X11 server...",
+                        stringResource(R.string.x11_connecting),
                         modifier = Modifier.padding(top = 80.dp),
                         color = Color.White,
                     )
@@ -416,7 +418,7 @@ fun X11Screen(
             is X11ConnectionState.Failed -> {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text(
-                        "X11 server not ready — VM still booting?\n${state.message}",
+                        "${stringResource(R.string.x11_not_ready)}\n${state.message}",
                         color = MaterialTheme.colorScheme.error,
                     )
                 }
@@ -454,30 +456,30 @@ fun X11Screen(
                                     val event = awaitPointerEvent()
                                     val change = event.changes.firstOrNull() ?: continue
 
-                                    // Physical-mouse scroll wheel → X wheel (buttons 4/5).
-                                    if (event.type == PointerEventType.Scroll) {
-                                        val dy = change.scrollDelta.y
-                                        if (dy != 0f) {
-                                            viewModel.moveTo(fbX(change.position.x), fbY(change.position.y))
-                                            viewModel.scroll(up = dy < 0f, ticks = abs(dy).toInt().coerceAtLeast(1))
+                                        // Physical-mouse scroll wheel → X wheel (buttons 4/5).
+                                        if (event.type == PointerEventType.Scroll) {
+                                            val dy = change.scrollDelta.y
+                                            if (dy != 0f) {
+                                                viewModel.moveTo(fbX(change.position.x), fbY(change.position.y))
+                                                viewModel.scroll(up = dy < 0f, ticks = abs(dy).toInt().coerceAtLeast(1))
+                                            }
+                                            event.changes.forEach { it.consume() }
+                                            continue
                                         }
-                                        event.changes.forEach { it.consume() }
-                                        continue
-                                    }
 
-                                    // Physical mouse → absolute move + native buttons.
-                                    // Consuming keeps right-click from falling through to
-                                    // Android Back (which exited fullscreen) and sends it
-                                    // to X as button 3 instead.
-                                    if (change.type == PointerType.Mouse) {
-                                        var mask = 0
-                                        if (event.buttons.isPrimaryPressed)   mask = mask or VncClient.BTN_LEFT
-                                        if (event.buttons.isSecondaryPressed) mask = mask or VncClient.BTN_RIGHT
-                                        if (event.buttons.isTertiaryPressed)  mask = mask or VncClient.BTN_MIDDLE
-                                        viewModel.mouseUpdate(fbX(change.position.x), fbY(change.position.y), mask)
-                                        event.changes.forEach { it.consume() }
-                                        continue
-                                    }
+                                        // Physical mouse → absolute move + native buttons.
+                                        // Consuming keeps right-click from falling through to
+                                        // Android Back (which exited fullscreen) and sends it
+                                        // to X as button 3 instead.
+                                        if (change.type == PointerType.Mouse) {
+                                            var mask = 0
+                                            if (event.buttons.isPrimaryPressed)   mask = mask or VncClient.BTN_LEFT
+                                            if (event.buttons.isSecondaryPressed) mask = mask or VncClient.BTN_RIGHT
+                                            if (event.buttons.isTertiaryPressed)  mask = mask or VncClient.BTN_MIDDLE
+                                            viewModel.mouseUpdate(fbX(change.position.x), fbY(change.position.y), mask)
+                                            event.changes.forEach { it.consume() }
+                                            continue
+                                        }
 
                                     // Touch → finger-gesture state machine (one gesture).
                                     if (change.type != PointerType.Touch || !change.changedToDown()) continue
@@ -516,7 +518,7 @@ fun X11Screen(
                                         continue
                                     }
 
-                                    if (s.touchMode == TouchMode.DIRECT) viewModel.moveTo(fbX(sx), fbY(sy))
+                                        if (s.touchMode == TouchMode.DIRECT) viewModel.moveTo(fbX(sx), fbY(sy))
 
                                     // Long-press (single finger, no move, ~500ms) => drag-lock.
                                     var outcome = "move"
@@ -666,13 +668,13 @@ fun X11Screen(
                     },
                 )
 
-                if (s.showExtraKeys && !fullscreen) {
-                    X11ExtraKeysRow(
-                        onKey = ::onExtraKey,
-                        ctrlActive = ctrlActive,
-                        altActive  = altActive,
-                    )
-                }
+                    if (s.showExtraKeys && !fullscreen) {
+                        X11ExtraKeysRow(
+                            onKey = ::onExtraKey,
+                            ctrlActive = ctrlActive,
+                            altActive  = altActive,
+                        )
+                    }
 
                 // Hidden IME hook (must stay in the layout while connected so
                 // the requestFocus/show sequence has a target).

@@ -2,7 +2,9 @@ package com.excp.podroid.ui.navigation
 
 import androidx.compose.material3.windowsizeclass.WindowSizeClass
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
+import androidx.activity.compose.LocalActivity
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
@@ -107,6 +109,10 @@ fun PodroidNavGraph(
         }
 
         composable(Routes.SETTINGS) {
+            val activity = LocalActivity.current
+            val onLanguageChanged = remember(activity) {
+                { activity?.recreate() ?: Unit }
+            }
             SettingsScreen(
                 windowSizeClass = windowSizeClass,
                 onNavigateBack = {
@@ -118,6 +124,7 @@ fun PodroidNavGraph(
                         }
                     }
                 },
+                onLanguageChanged = onLanguageChanged,
             )
         }
     }

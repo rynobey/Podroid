@@ -11,7 +11,7 @@ If something you maintain is included here and we missed you, please open an iss
 These projects make up the actual Linux system that runs inside Podroid.
 
 ### Linux kernel
-Podroid ships a custom build of the upstream Linux kernel (currently 7.0.5) configured specifically for OCI-compatible containers under QEMU TCG.
+Podroid ships a custom build of the upstream Linux kernel (currently 7.0.10) configured specifically for OCI-compatible containers under QEMU TCG.
 
 - Project: https://kernel.org
 - License: GNU General Public License v2.0

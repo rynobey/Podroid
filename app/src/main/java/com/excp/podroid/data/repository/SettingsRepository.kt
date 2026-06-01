@@ -65,6 +65,7 @@ class SettingsRepository @Inject constructor(
         val KEY_X11_ROTATION        = stringPreferencesKey("x11_rotation_lock")
         val KEY_X11_SHOW_EXTRA_KEYS = booleanPreferencesKey("x11_show_extra_keys")
         val KEY_X11_DPI             = intPreferencesKey("x11_dpi")
+        val KEY_LANGUAGE              = stringPreferencesKey("language")
 
         /**
          * Default tunable QEMU args — CPU model, accel tuning, RNG source, overcommit.
@@ -124,6 +125,9 @@ class SettingsRepository @Inject constructor(
     val hapticsEnabled       = pref(KEY_HAPTICS_ENABLED, true)
     val dynamicColorEnabled  = pref(KEY_DYNAMIC_COLOR_ENABLED, false)
     val lastBootDurationMs   = pref(KEY_LAST_BOOT_DURATION_MS, 0L)
+    val language: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[KEY_LANGUAGE] ?: "auto"
+    }
     val avfHintDismissed     = pref(KEY_AVF_HINT_DISMISSED, false)
     val usbPassthroughEnabled = pref(KEY_USB_PASSTHROUGH_ENABLED, false)
     val avfVerboseLogging: Flow<Boolean> = context.dataStore.data
@@ -152,6 +156,7 @@ class SettingsRepository @Inject constructor(
     suspend fun setHapticsEnabled(value: Boolean)        = set(KEY_HAPTICS_ENABLED, value)
     suspend fun setDynamicColorEnabled(value: Boolean)   = set(KEY_DYNAMIC_COLOR_ENABLED, value)
     suspend fun setLastBootDurationMs(value: Long)       = set(KEY_LAST_BOOT_DURATION_MS, value)
+    suspend fun setLanguage(value: String)               = set(KEY_LANGUAGE, value)
     suspend fun setEngineSelection(value: EngineSelection) = set(KEY_ENGINE_SELECTION, value.name)
     suspend fun setAvfHintDismissed(value: Boolean)      = set(KEY_AVF_HINT_DISMISSED, value)
     suspend fun setAvfVerboseLogging(value: Boolean)     = set(KEY_AVF_VERBOSE_LOGGING, value)
@@ -188,6 +193,7 @@ class SettingsRepository @Inject constructor(
     suspend fun setX11ShowExtraKeys(v: Boolean) = set(KEY_X11_SHOW_EXTRA_KEYS, v)
     suspend fun setX11Dpi(v: Int) = set(KEY_X11_DPI, v)
     suspend fun getX11DpiSnapshot() = (x11Settings.first()).dpi
+    suspend fun getLanguageSnapshot()                    = language.first()
 
     // Snapshots used by non-Compose call sites (PodroidService, exporters).
     suspend fun getSshEnabledSnapshot()           = sshEnabled.first()

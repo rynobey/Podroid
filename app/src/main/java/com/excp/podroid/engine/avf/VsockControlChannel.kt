@@ -9,7 +9,7 @@
  *
  * Wire format (LF-terminated ASCII):
  *   RESIZE <rows> <cols>
- *   ADD    <vport> tcp <host> <gport>
+ *   ADD    <vport> <tcp|udp> <host> <gport>
  *   REMOVE <vport>
  *   PING                      → agent replies "PONG\n" (we ignore the reply)
  *   SYNC                      → agent runs sync(2), replies "SYNCED\n"
@@ -170,7 +170,7 @@ class VsockControlChannel(
     }
 
     fun sendResize(rows: Int, cols: Int)             = sendOrQueue("RESIZE $rows $cols")
-    fun addForward(vport: Int, host: String, gport: Int) = sendOrQueue("ADD $vport tcp $host $gport")
+    fun addForward(vport: Int, proto: String, host: String, gport: Int) = sendOrQueue("ADD $vport $proto $host $gport")
     fun removeForward(vport: Int)                    = sendOrQueue("REMOVE $vport")
 
     /**

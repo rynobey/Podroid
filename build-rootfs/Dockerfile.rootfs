@@ -8,6 +8,10 @@ RUN apk add --no-cache musl-dev gcc make linux-headers
 WORKDIR /work
 COPY vsock-agent /work/vsock-agent
 RUN cd /work/vsock-agent && make CC=gcc
+COPY host-bridge /work/host-bridge
+RUN cd /work/host-bridge && make CC=gcc
+COPY overlay-normalize /work/overlay-normalize
+RUN cd /work/overlay-normalize && make CC=gcc
 
 # ── Stage 2: build the Alpine rootfs squashfs ───────────────────────────────
 FROM alpine:3.23 AS builder
@@ -26,6 +30,11 @@ RUN curl -L -o minirootfs.tar.gz \
 
 # Pull in the vsock-agent binary built in stage 1.
 COPY --from=vsock-builder /work/vsock-agent/podroid-vsock-agent /work/rootfs/usr/local/bin/podroid-vsock-agent
+COPY --from=vsock-builder /work/host-bridge/podroid-hostd /work/rootfs/usr/local/bin/podroid-hostd
+COPY --from=vsock-builder /work/overlay-normalize/podroid-overlay-normalize /work/rootfs/usr/local/bin/podroid-overlay-normalize
+
+ARG SYSTEM_VERSION=0
+ENV SYSTEM_VERSION=${SYSTEM_VERSION}
 
 ENV ALPINE_VERSION=${ALPINE_RELEASE}
 COPY files /work/files

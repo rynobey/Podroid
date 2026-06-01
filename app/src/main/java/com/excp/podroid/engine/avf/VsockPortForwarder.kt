@@ -40,7 +40,7 @@ class VsockPortForwarder(
     private val guestVsockPort: Int,
     private val vm: Any,
     private val scope: CoroutineScope,
-) {
+) : Forwarder {
     companion object {
         private const val TAG = "VsockPortForwarder"
         // A runtime-added rule sends the control ADD then immediately starts the
@@ -72,7 +72,7 @@ class VsockPortForwarder(
     private val inflight = Semaphore(MAX_INFLIGHT)
     @Volatile private var closed = false
 
-    fun start() {
+    override fun start() {
         val s = ServerSocket(hostPort, /* backlog */ 16, InetAddress.getByName("0.0.0.0"))
         server = s
         Log.d(TAG, "listening on 0.0.0.0:$hostPort → vsock:$guestVsockPort")
@@ -163,7 +163,7 @@ class VsockPortForwarder(
         } catch (_: java.io.IOException) { /* peer closed — normal exit */ }
     }
 
-    fun close() {
+    override fun close() {
         if (closed) return
         closed = true
         runCatching { server?.close() }            // unblocks accept()

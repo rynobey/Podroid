@@ -28,6 +28,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.res.stringResource
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -47,6 +48,7 @@ import com.excp.podroid.x11.ResolutionMode
 import com.excp.podroid.x11.ResolutionPreset
 import com.excp.podroid.x11.RotationLock
 import com.excp.podroid.x11.TouchMode
+import com.excp.podroid.R
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -60,7 +62,7 @@ fun X11SettingsSheet(viewModel: X11ViewModel, onDismiss: () -> Unit) {
                 .verticalScroll(rememberScrollState()),
         ) {
             // ── RESOLUTION ────────────────────────────────────────────
-            PodroidSectionLabel("Resolution")
+            PodroidSectionLabel(stringResource(R.string.resolution))
 
             Row(
                 horizontalArrangement = Arrangement.spacedBy(PodroidTokens.Spacing.SM),
@@ -73,9 +75,9 @@ fun X11SettingsSheet(viewModel: X11ViewModel, onDismiss: () -> Unit) {
                         label = {
                             Text(
                                 when (mode) {
-                                    ResolutionMode.MATCH  -> "Match viewport"
-                                    ResolutionMode.PRESET -> "Preset"
-                                    ResolutionMode.CUSTOM -> "Custom"
+                                    ResolutionMode.MATCH  -> stringResource(R.string.match_viewport)
+                                    ResolutionMode.PRESET -> stringResource(R.string.preset)
+                                    ResolutionMode.CUSTOM -> stringResource(R.string.custom_resolution)
                                 }
                             )
                         },
@@ -98,10 +100,10 @@ fun X11SettingsSheet(viewModel: X11ViewModel, onDismiss: () -> Unit) {
                             label = {
                                 Text(
                                     when (preset) {
-                                        ResolutionPreset.R720P  -> "720p"
-                                        ResolutionPreset.R900P  -> "900p"
-                                        ResolutionPreset.R1080P -> "1080p"
-                                        ResolutionPreset.R1440P -> "1440p"
+                                        ResolutionPreset.R720P  -> stringResource(R.string.res_720p)
+                                        ResolutionPreset.R900P  -> stringResource(R.string.res_900p)
+                                        ResolutionPreset.R1080P -> stringResource(R.string.res_1080p)
+                                        ResolutionPreset.R1440P -> stringResource(R.string.res_1440p)
                                     }
                                 )
                             },
@@ -122,7 +124,7 @@ fun X11SettingsSheet(viewModel: X11ViewModel, onDismiss: () -> Unit) {
             }
 
             // ── ROTATION ──────────────────────────────────────────────
-            PodroidSectionLabel("Rotation")
+            PodroidSectionLabel(stringResource(R.string.rotation))
 
             Row(
                 horizontalArrangement = Arrangement.spacedBy(PodroidTokens.Spacing.SM),
@@ -135,9 +137,9 @@ fun X11SettingsSheet(viewModel: X11ViewModel, onDismiss: () -> Unit) {
                         label = {
                             Text(
                                 when (lock) {
-                                    RotationLock.AUTO      -> "Auto"
-                                    RotationLock.LANDSCAPE -> "Landscape"
-                                    RotationLock.PORTRAIT  -> "Portrait"
+                                    RotationLock.AUTO      -> stringResource(R.string.auto_rotation)
+                                    RotationLock.LANDSCAPE -> stringResource(R.string.landscape)
+                                    RotationLock.PORTRAIT  -> stringResource(R.string.portrait)
                                 }
                             )
                         },
@@ -148,7 +150,7 @@ fun X11SettingsSheet(viewModel: X11ViewModel, onDismiss: () -> Unit) {
             }
 
             // ── TOUCH ─────────────────────────────────────────────────
-            PodroidSectionLabel("Touch")
+            PodroidSectionLabel(stringResource(R.string.touch))
 
             Row(
                 horizontalArrangement = Arrangement.spacedBy(PodroidTokens.Spacing.SM),
@@ -158,7 +160,7 @@ fun X11SettingsSheet(viewModel: X11ViewModel, onDismiss: () -> Unit) {
                     FilterChip(
                         selected = s.touchMode == mode,
                         onClick = { viewModel.setTouchMode(mode) },
-                        label = { Text(if (mode == TouchMode.DIRECT) "Direct touch" else "Trackpad") },
+                        label = { Text(if (mode == TouchMode.DIRECT) stringResource(R.string.direct_touch) else stringResource(R.string.trackpad)) },
                         shape = RoundedCornerShape(PodroidTokens.Radius.Chip),
                         colors = PodroidChipColors(),
                     )
@@ -167,7 +169,7 @@ fun X11SettingsSheet(viewModel: X11ViewModel, onDismiss: () -> Unit) {
 
             Spacer(Modifier.height(PodroidTokens.Spacing.SM))
             Text(
-                "Pointer speed: ${"%.1f".format(s.trackpadSensitivity)}x",
+                "${stringResource(R.string.pointer_speed)}: ${"%.1f".format(s.trackpadSensitivity)}x",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Slider(
@@ -182,7 +184,7 @@ fun X11SettingsSheet(viewModel: X11ViewModel, onDismiss: () -> Unit) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("Pointer acceleration", color = MaterialTheme.colorScheme.onSurface)
+                Text(stringResource(R.string.pointer_acceleration), color = MaterialTheme.colorScheme.onSurface)
                 PodroidSwitch(
                     checked = s.trackpadAccel,
                     onCheckedChange = { viewModel.setTrackpadAccel(it) },
@@ -191,14 +193,14 @@ fun X11SettingsSheet(viewModel: X11ViewModel, onDismiss: () -> Unit) {
             }
 
             // ── DISPLAY ───────────────────────────────────────────────
-            PodroidSectionLabel("Display")
+            PodroidSectionLabel(stringResource(R.string.display))
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("Show extra keys", color = MaterialTheme.colorScheme.onSurface)
+                Text(stringResource(R.string.show_extra_keys), color = MaterialTheme.colorScheme.onSurface)
                 PodroidSwitch(
                     checked = s.showExtraKeys,
                     onCheckedChange = { viewModel.setShowExtraKeys(it) },
@@ -210,7 +212,7 @@ fun X11SettingsSheet(viewModel: X11ViewModel, onDismiss: () -> Unit) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("Start in fullscreen", color = MaterialTheme.colorScheme.onSurface)
+                Text(stringResource(R.string.start_fullscreen), color = MaterialTheme.colorScheme.onSurface)
                 PodroidSwitch(
                     checked = s.fullscreenDefault,
                     onCheckedChange = { viewModel.setFullscreenDefault(it) },
@@ -218,7 +220,7 @@ fun X11SettingsSheet(viewModel: X11ViewModel, onDismiss: () -> Unit) {
             }
 
             Spacer(Modifier.height(PodroidTokens.Spacing.SM))
-            Text("Server DPI", color = MaterialTheme.colorScheme.onSurface)
+            Text(stringResource(R.string.server_dpi), color = MaterialTheme.colorScheme.onSurface)
             Spacer(Modifier.height(PodroidTokens.Spacing.XS))
             Row(
                 horizontalArrangement = Arrangement.spacedBy(PodroidTokens.Spacing.SM),
@@ -235,7 +237,7 @@ fun X11SettingsSheet(viewModel: X11ViewModel, onDismiss: () -> Unit) {
                 }
             }
             Text(
-                "Applies on next VM start",
+                stringResource(R.string.applies_on_next_vm_start),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -271,7 +273,7 @@ private fun CustomResolutionFields(
         OutlinedTextField(
             value = wText,
             onValueChange = { wText = it },
-            label = { Text("Width") },
+            label = { Text(stringResource(R.string.width)) },
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
             keyboardActions = KeyboardActions(onDone = { commit() }),
@@ -282,7 +284,7 @@ private fun CustomResolutionFields(
         OutlinedTextField(
             value = hText,
             onValueChange = { hText = it },
-            label = { Text("Height") },
+            label = { Text(stringResource(R.string.height)) },
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
             keyboardActions = KeyboardActions(onDone = { commit() }),

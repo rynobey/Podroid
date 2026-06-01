@@ -164,8 +164,8 @@ class AvfEngine @Inject constructor(
      * of DataStore rules — whichever path wins owns the forwarder.
      */
     private val initialRules = mutableListOf<com.excp.podroid.data.repository.PortForwardRule>()
-    /** vport → forwarder. Written via addPortForward/removePortForward only. */
-    private val forwarders = java.util.concurrent.ConcurrentHashMap<Int, VsockPortForwarder>()
+    /** vsock port → forwarder. Written via addPortForward/removePortForward only. */
+    private val forwarders = java.util.concurrent.ConcurrentHashMap<Int, Forwarder>()
     @Volatile private var lastSentRows = -1
     @Volatile private var lastSentCols = -1
 
@@ -236,11 +236,7 @@ class AvfEngine @Inject constructor(
         synchronized(consoleLock) { consoleBuilder.clear() }
         _consoleText.value = ""
         initialRules.clear()
-        initialRules.addAll(portForwards.filter { it.protocol == "tcp" })
-        if (portForwards.any { it.protocol != "tcp" }) {
-            Log.w(TAG, "AVF supports TCP only; UDP/non-TCP rules ignored: " +
-                "${portForwards.filter { it.protocol != "tcp" }}")
-        }
+        initialRules.addAll(portForwards)
         _state.value = VmState.Starting
         _bootStage.value = "Initializing AVF..."
         // Re-arm the one-shot detector so a Stop → Start cycle's second boot
@@ -464,71 +460,60 @@ class AvfEngine @Inject constructor(
         }
     }
 
+    override fun openHostTransport(): com.excp.podroid.engine.hostbridge.HostTransport? {
+        val vm = vmHandle ?: return null
+        return com.excp.podroid.engine.hostbridge.AvfHostTransport.open(vm)
+    }
+
     override suspend fun addPortForward(rule: com.excp.podroid.data.repository.PortForwardRule) {
         if (_state.value !is VmState.Running) return
         val vm = vmHandle ?: return
-        if (rule.protocol != "tcp") {
-            Log.w(TAG, "addPortForward($rule) — AVF supports TCP only; rule ignored")
-            return
-        }
+        // TCP keeps vport == hostPort (unchanged); UDP is offset so a TCP and a
+        // UDP rule on the same host port don't collide on the vsock port space.
+        val vport = AvfVport.forRule(rule)
         try {
-            // Convention: vsock port == hostPort. The guest agent listens on
-            // vsock:hostPort and splices to tcp 127.0.0.1:guestPort. Using
-            // hostPort (which is unique per Android-side rule) instead of
-            // guestPort avoids vsock-port collisions when two rules target
-            // the same service inside the VM (e.g. 8080→80 + 9090→80).
-            val fw = VsockPortForwarder(
-                hostPort = rule.hostPort,
-                guestVsockPort = rule.hostPort,
-                vm = vm,
-                scope = scope,
-            )
-            // putIfAbsent races safely with another concurrent addPortForward
-            // for the same hostPort — only one forwarder wins; the loser closes
-            // immediately so we don't leak a bound ServerSocket.
-            val existing = forwarders.putIfAbsent(rule.hostPort, fw)
+            val fw: Forwarder = if (rule.protocol == "udp") {
+                VsockUdpForwarder(hostPort = rule.hostPort, guestVsockPort = vport, vm = vm, scope = scope)
+            } else {
+                VsockPortForwarder(hostPort = rule.hostPort, guestVsockPort = vport, vm = vm, scope = scope)
+            }
+            // putIfAbsent races safely with a concurrent addPortForward for the
+            // same vport — only one forwarder wins; the loser is closed here. fw
+            // hasn't been started yet, so close() is a cheap no-op, but it keeps
+            // this correct if start() ever moves above putIfAbsent.
+            val existing = forwarders.putIfAbsent(vport, fw)
             if (existing != null) {
-                Log.d(TAG, "addPortForward($rule) — forwarder already exists for ${rule.hostPort}")
+                Log.d(TAG, "addPortForward($rule) — forwarder already exists for vsock:$vport")
+                runCatching { fw.close() }
                 return
             }
-            // Re-check Running state before .start() so a concurrent cleanup()
-            // doesn't orphan us. If state has slipped, drop the freshly-mapped
-            // forwarder and don't bind the ServerSocket.
+            // Re-check Running before start() so a concurrent cleanup() doesn't
+            // orphan us. If state slipped, drop the freshly-mapped forwarder.
             if (_state.value !is VmState.Running) {
-                forwarders.remove(rule.hostPort)
+                forwarders.remove(vport)
                 return
             }
             fw.start()
             val ctl = control
             if (ctl != null) {
-                ctl.addForward(rule.hostPort, "127.0.0.1", rule.guestPort)
+                ctl.addForward(vport, rule.protocol, "127.0.0.1", rule.guestPort)
             } else {
-                // EngineHolder's diff loop can call addPortForward the instant
-                // state flips to Running, a hair before bringUpControlChannel
-                // sets `control`. The host listener is already bound; the guest
-                // ADD is what's at risk here. Surface it rather than dropping
-                // silently. The auto-injected rules are replayed by
-                // bringUpControlChannel (which sets `control` before the replay,
-                // so their ADDs land); a DataStore rule that lands in this narrow
-                // window is re-dispatched by EngineHolder on the next sync.
-                Log.w(TAG, "addPortForward(${rule.hostPort}): control channel not up yet; " +
+                Log.w(TAG, "addPortForward(${rule.hostPort}/${rule.protocol}): control channel not up yet; " +
                     "guest ADD skipped (host listener is bound)")
             }
-            Log.i(TAG, "live forward up: 0.0.0.0:${rule.hostPort} → vsock:${rule.hostPort} → 127.0.0.1:${rule.guestPort}")
+            Log.i(TAG, "live forward up: 0.0.0.0:${rule.hostPort}/${rule.protocol} → vsock:$vport → 127.0.0.1:${rule.guestPort}")
         } catch (e: Throwable) {
-            // If we got past putIfAbsent before the throw, remove ourselves so
-            // cleanup() doesn't try to close a half-built forwarder.
-            forwarders.remove(rule.hostPort)
+            forwarders.remove(vport)
             Log.w(TAG, "addPortForward($rule) failed", e)
         }
     }
 
     override suspend fun removePortForward(rule: com.excp.podroid.data.repository.PortForwardRule) {
-        if (rule.protocol != "tcp") return
-        val fw = forwarders.remove(rule.hostPort) ?: return
+        val vport = AvfVport.forRule(rule)
+        val fw = forwarders.remove(vport) ?: return
         runCatching { fw.close() }
-        runCatching { control?.removeForward(rule.hostPort) }
-        Log.i(TAG, "live forward down: 0.0.0.0:${rule.hostPort}")
+        runCatching { control?.removeForward(vport) }
+        Log.i(TAG, "live forward down: 0.0.0.0:${rule.hostPort}/${rule.protocol}")
     }
 
     /**
@@ -738,9 +723,16 @@ class AvfEngine @Inject constructor(
         // wire an RTC the way QEMU TCG does, so without this the guest
         // boots at 1970-01-01 and TLS fails on every cert.
         val epoch = System.currentTimeMillis() / 1000
-        val resolvedCmdline = ("console=hvc0 root=/dev/ram0 mitigations=off elevator=mq-deadline " +
-            "podroid.tty=hvc0 podroid.backend=avf podroid.epoch=$epoch " +
-            "podroid.x11.dpi=${config.x11Dpi} " +
+        // earlycon captures kernel output BEFORE hvc0 is up. crosvm folds the
+        // 8250 serial into the same stream getConsoleOutput() reads, so a guest
+        // that reboots in early boot (e.g. the Tensor G3 MATCH_HOST crash, #29)
+        // finally leaves a panic instead of an empty console.log. keep_bootcon
+        // keeps it printing after the real console registers.
+        val earlycon = "earlycon keep_bootcon"
+        val verboseFlags = if (config.verboseLogging) " ignore_loglevel" else ""
+        val resolvedCmdline = ("console=hvc0 $earlycon root=/dev/ram0 mitigations=off " +
+            "elevator=mq-deadline podroid.tty=hvc0 podroid.backend=avf podroid.epoch=$epoch " +
+            "podroid.x11.dpi=${config.x11Dpi}$verboseFlags " +
             config.kernelExtraCmdline).trim()
         AvfReflect.addParams(cb, resolvedCmdline)
         if (config.verboseLogging) {

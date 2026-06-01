@@ -36,6 +36,7 @@
         <li><a href="backends.html" class="active">Backends: QEMU &amp; AVF</a></li>
         <li><a href="networking.html">Networking &amp; ports</a></li>
         <li><a href="packages.html">Packages &amp; services</a></li>
+        <li><a href="migrations.html">Updates &amp; migrations</a></li>
         <li><a href="desktop.html">Desktops &amp; X11 viewer</a></li>
         <li><a href="settings.html">Terminal &amp; settings</a></li>
       </ul>
@@ -150,6 +151,11 @@
             <td>May be a no-op on shipping Pixel AVF builds (requires an AOSP-main SharedPath API not yet in stable releases)</td>
           </tr>
           <tr>
+            <td>USB device passthrough</td>
+            <td>Supported (opt-in; adds a USB controller at boot)</td>
+            <td>Not available - there is no QMP channel to stream device handles to the VM</td>
+          </tr>
+          <tr>
             <td>Verbose logging toggle</td>
             <td>Not applicable</td>
             <td>"Verbose AVF logging" in Settings &rarr; Advanced (useful for bug reports)</td>
@@ -158,15 +164,15 @@
       </table>
 
       <div class="callout warn">
-        <span class="label">AVF boot failures on some Pixel 8 / 8a / 9 units</span>
-        <p>Some Pixel 8, Pixel 8a, and Pixel 9 units reboot the device during AVF VM startup. This appears to be a pKVM firmware issue on certain builds. If AVF causes a reboot, switch the backend to <strong>QEMU (TCG)</strong> in Settings &rarr; Advanced. QEMU is the reliable fallback on all devices. See <a href="limitations.html">Limitations &amp; troubleshooting</a> for the current status.</p>
+        <span class="label">AVF boot failures with multiple vCPUs on some units</span>
+        <p>On some units (notably certain Pixel 8 / 8a / 9 builds) the guest fails to boot under AVF when more than one vCPU is used - the all-cores topology trips secondary-CPU bringup early in boot on those hypervisors, before any console output appears. Podroid now detects an AVF guest that fails to boot and offers in-app recovery: <strong>Use 1 core</strong> - which boots successfully on the affected units - or <strong>Switch to QEMU</strong>. You can also set CPU cores to 1 in Settings &rarr; Advanced beforehand. QEMU (TCG) remains the reliable fallback on all devices. See <a href="limitations.html">Limitations &amp; troubleshooting</a> for the current status.</p>
       </div>
 
       <div class="pagenav">
         <a class="prev" href="performance.html"><span class="dir">Previous</span>&larr; Performance</a>
         <a class="next" href="networking.html"><span class="dir">Next</span>Networking &amp; ports &rarr;</a>
       </div>
-      <p class="docfoot">Podroid is free software (GPL). Docs for v1.2.1. Found something inaccurate? <a href="https://github.com/ExTV/Podroid/issues">Open an issue</a>.</p>
+      <p class="docfoot">Podroid is free software (GPL). Docs for v1.2.3. Found something inaccurate? <a href="https://github.com/ExTV/Podroid/issues">Open an issue</a>.</p>
     </main>
   </div>
 

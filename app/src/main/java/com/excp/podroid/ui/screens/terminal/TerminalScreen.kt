@@ -45,6 +45,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.windowsizeclass.WindowSizeClass
+import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DesktopWindows
 import androidx.compose.material.icons.filled.Tune
@@ -97,12 +98,14 @@ import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import com.excp.podroid.R
 import com.excp.podroid.engine.VmState
 import com.excp.podroid.ui.components.AdaptiveContainer
 import com.excp.podroid.ui.components.PodroidGhostButton
@@ -127,6 +130,7 @@ fun TerminalScreen(
     val showQuickSettings by viewModel.showQuickSettings.collectAsStateWithLifecycle()
     val showExtraKeys by viewModel.showExtraKeysFlow.collectAsStateWithLifecycle()
     val hapticsEnabled by viewModel.hapticsEnabledFlow.collectAsStateWithLifecycle()
+    var showServerSheet by remember { mutableStateOf(false) }
 
     DisposableEffect(Unit) {
         val activity = context as? Activity
@@ -186,7 +190,7 @@ fun TerminalScreen(
             .windowInsetsPadding(WindowInsets.ime)
     ) {
         PodroidTopBar(
-            title = "Terminal",
+            title = stringResource(R.string.terminal_title),
             navigationIcon = {
                 IconButton(onClick = {
                     val imm = context.getSystemService(android.content.Context.INPUT_METHOD_SERVICE)
@@ -196,32 +200,43 @@ fun TerminalScreen(
                     }
                     onNavigateBack()
                 }) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
                 }
             },
             actions = {
+                IconButton(onClick = { showServerSheet = true }) {
+                    Icon(Icons.Default.Bedtime, contentDescription = stringResource(R.string.server_mode))
+                }
+                Spacer(Modifier.width(PodroidTokens.Spacing.XS))
                 IconButton(onClick = onNavigateToX11) {
                     Icon(Icons.Default.DesktopWindows, contentDescription = "X11 screen")
                 }
                 Spacer(Modifier.width(PodroidTokens.Spacing.XS))
                 IconButton(onClick = { viewModel.openQuickSettings() }) {
-                    Icon(Icons.Default.Tune, contentDescription = "Quick settings")
+                    Icon(Icons.Default.Tune, contentDescription = stringResource(R.string.settings))
                 }
             },
         )
+
+        if (showServerSheet) {
+            ServerModeSheet(
+                onDismiss = { showServerSheet = false },
+                onEnable = { viewModel.enableServerMode() },
+            )
+        }
 
         when (vmState) {
             is VmState.Idle, is VmState.Stopped -> {
                 Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
-                            text = "Stopped",
+                            text = stringResource(R.string.status_stopped),
                             style = MaterialTheme.typography.displayLarge,
                             color = MaterialTheme.colorScheme.onSurface,
                         )
                         Spacer(Modifier.height(PodroidTokens.Spacing.SM))
                         Text(
-                            "Start the VM from the Home screen first.",
+                            stringResource(R.string.vm_not_running_hint),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -236,7 +251,7 @@ fun TerminalScreen(
                         modifier = Modifier.padding(horizontal = PodroidTokens.Spacing.XL),
                     ) {
                         Text(
-                            text = "Error",
+                            text = stringResource(R.string.error_title),
                             style = MaterialTheme.typography.displayLarge,
                             color = MaterialTheme.colorScheme.error,
                         )
@@ -249,7 +264,7 @@ fun TerminalScreen(
                         )
                         Spacer(Modifier.height(PodroidTokens.Spacing.LG))
                         PodroidGhostButton(
-                            text = "Back to Home",
+                            text = stringResource(R.string.back_to_home),
                             onClick = onNavigateBack,
                             modifier = Modifier.fillMaxWidth(0.6f),
                         )
@@ -260,7 +275,7 @@ fun TerminalScreen(
             is VmState.Starting -> {
                 Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                     Text(
-                        text = "Starting…",
+                        text = stringResource(R.string.status_starting) + "…",
                         style = MaterialTheme.typography.displayLarge,
                         color = MaterialTheme.colorScheme.tertiary,
                     )
@@ -635,7 +650,7 @@ private fun QuickSettingsDialog(
     // ── Sub-dialogs unchanged ───────────────────────────────────────
     if (showThemePicker) {
         FullPickerDialog(
-            title = "Color themes",
+            title = stringResource(R.string.color_themes),
             items = themes, selected = colorTheme,
             onPick = { onColorThemeChange(it); showThemePicker = false; onDismiss() },
             onDismiss = { showThemePicker = false },
@@ -645,13 +660,13 @@ private fun QuickSettingsDialog(
                 ThemeSwatch(name, sel, click, longClick, viewModel)
             },
             extraTrailingChip = {
-                AddSwatch(label = "Import", subLabel = "Paste URL", onClick = { showThemeImport = true })
+                AddSwatch(label = stringResource(R.string.import_label), subLabel = stringResource(R.string.paste_url), onClick = { showThemeImport = true })
             },
         )
     }
     if (showFontPicker) {
         FullPickerDialog(
-            title = "Fonts",
+            title = stringResource(R.string.fonts),
             items = fonts, selected = terminalFont,
             onPick = { onFontChange(it); showFontPicker = false; onDismiss() },
             onDismiss = { showFontPicker = false },
@@ -661,7 +676,7 @@ private fun QuickSettingsDialog(
                 FontSwatch(name, viewModel.isCustomFont(name), sel, click, longClick, viewModel)
             },
             extraTrailingChip = {
-                AddSwatch(label = "+ Add", subLabel = ".ttf", onClick = { fontImport.launch(fontMimes) })
+                AddSwatch(label = stringResource(R.string.add_btn), subLabel = ".ttf", onClick = { fontImport.launch(fontMimes) })
             },
         )
     }
@@ -675,29 +690,29 @@ private fun QuickSettingsDialog(
     fontToDelete?.let { name ->
         AlertDialog(
             onDismissRequest = { fontToDelete = null },
-            title = { Text("Remove font?") },
-            text  = { Text("\"${prettyName(name)}\" will be deleted.") },
+            title = { Text(stringResource(R.string.remove_font_question)) },
+            text  = { Text(stringResource(R.string.item_will_be_deleted, prettyName(name))) },
             confirmButton = {
                 TextButton(onClick = {
                     if (viewModel.deleteCustomFont(name)) { if (terminalFont == name) onFontChange("default"); bump++ }
                     fontToDelete = null
-                }) { Text("Delete") }
+                }) { Text(stringResource(R.string.delete_label)) }
             },
-            dismissButton = { TextButton(onClick = { fontToDelete = null }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { fontToDelete = null }) { Text(stringResource(R.string.cancel)) } },
         )
     }
     themeToDelete?.let { name ->
         AlertDialog(
             onDismissRequest = { themeToDelete = null },
-            title = { Text("Remove theme?") },
-            text  = { Text("\"${prettyName(name)}\" will be deleted.") },
+            title = { Text(stringResource(R.string.remove_theme_question)) },
+            text  = { Text(stringResource(R.string.item_will_be_deleted, prettyName(name))) },
             confirmButton = {
                 TextButton(onClick = {
                     if (viewModel.deleteCustomTheme(name)) { if (colorTheme == name) onColorThemeChange("default"); bump++ }
                     themeToDelete = null
-                }) { Text("Delete") }
+                }) { Text(stringResource(R.string.delete_label)) }
             },
-            dismissButton = { TextButton(onClick = { themeToDelete = null }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { themeToDelete = null }) { Text(stringResource(R.string.cancel)) } },
         )
     }
 
@@ -749,17 +764,17 @@ private fun QuickSettingsDialog(
                     // Header
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            "Settings",
+                            stringResource(R.string.settings),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Medium,
                             modifier = Modifier.weight(1f),
                         )
                         IconButton(onClick = onDismiss, modifier = Modifier.size(36.dp)) {
-                            Icon(Icons.Default.Close, contentDescription = "Close")
+                            Icon(Icons.Default.Close, contentDescription = stringResource(R.string.close))
                         }
                     }
 
-                    PodroidSectionLabel("Display")
+                    PodroidSectionLabel(stringResource(R.string.display_section))
 
                     // Size slider — sliding doesn't dismiss (you want to adjust),
                     // but releasing the thumb does (matches the "any interaction
@@ -769,7 +784,7 @@ private fun QuickSettingsDialog(
                         modifier = Modifier.fillMaxWidth().padding(vertical = PodroidTokens.Spacing.SM),
                     ) {
                         Text(
-                            "Size",
+                            stringResource(R.string.size_label),
                             style = MaterialTheme.typography.bodyMedium,
                             modifier = Modifier.width(56.dp),
                         )
@@ -797,21 +812,21 @@ private fun QuickSettingsDialog(
                     // onDismiss to close the drawer.
                     Spacer(Modifier.height(PodroidTokens.Spacing.SM))
                     PodroidGhostButton(
-                        text = "Theme · ${prettyName(colorTheme)}",
+                        text = stringResource(R.string.theme_with_value, prettyName(colorTheme)),
                         onClick = { showThemePicker = true },
                     )
                     Spacer(Modifier.height(PodroidTokens.Spacing.SM))
                     PodroidGhostButton(
-                        text = "Font · ${prettyName(terminalFont)}",
+                        text = stringResource(R.string.font_with_value, prettyName(terminalFont)),
                         onClick = { showFontPicker = true },
                     )
 
-                    PodroidSectionLabel("Input")
+                    PodroidSectionLabel(stringResource(R.string.input_section))
 
                     // Toggles — flipping any of these dismisses the drawer
                     // immediately so the terminal is unblocked.
                     PodroidListRow(
-                        label = "Extra keys",
+                        label = stringResource(R.string.extra_keys),
                         rightSlot = {
                             PodroidSwitch(
                                 checked = showExtraKeys,
@@ -820,7 +835,7 @@ private fun QuickSettingsDialog(
                         },
                     )
                     PodroidListRow(
-                        label = "Haptics",
+                        label = stringResource(R.string.haptics),
                         rightSlot = {
                             PodroidSwitch(
                                 checked = hapticsEnabled,
@@ -1002,13 +1017,13 @@ private fun FullPickerDialog(
                         fontWeight = FontWeight.Medium,
                         modifier = Modifier.weight(1f))
                     IconButton(onClick = onDismiss, modifier = Modifier.size(36.dp)) {
-                        Icon(Icons.Default.Close, contentDescription = "Close")
+                        Icon(Icons.Default.Close, contentDescription = stringResource(R.string.close))
                     }
                 }
                 OutlinedTextField(
                     value = query,
                     onValueChange = { query = it },
-                    placeholder = { Text("Search ${items.size}") },
+                    placeholder = { Text(stringResource(R.string.search_n_items, items.size)) },
                     leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
@@ -1055,14 +1070,15 @@ private fun ThemeImportDialog(
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
+    val importErrorMsg = stringResource(R.string.import_theme_error)
 
     AlertDialog(
         onDismissRequest = { if (!busy) onDismiss() },
-        title = { Text("Import theme") },
+        title = { Text(stringResource(R.string.import_theme)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
-                    "Paste a terminalcolors.com theme URL.",
+                    stringResource(R.string.import_theme_hint),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -1092,13 +1108,13 @@ private fun ThemeImportDialog(
                         val name = viewModel.importThemeFromUrl(url)
                         busy = false
                         if (name != null) onImported(name)
-                        else error = "Couldn't import — check the URL."
+                        else error = importErrorMsg
                     }
                 },
-            ) { Text(if (busy) "Importing…" else "Import") }
+            ) { Text(if (busy) stringResource(R.string.importing) else stringResource(R.string.import_label)) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss, enabled = !busy) { Text("Cancel") }
+            TextButton(onClick = onDismiss, enabled = !busy) { Text(stringResource(R.string.cancel)) }
         },
     )
 }

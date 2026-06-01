@@ -40,6 +40,13 @@ interface VmEngine {
     val qmpClient: QmpClient?
 
     /**
+     * Open a guest -> Android host-bridge connection for the current session, or
+     * null if this backend/build can't (default). Called repeatedly by
+     * HostRequestServer with retry, so a null here just means "not ready yet".
+     */
+    fun openHostTransport(): com.excp.podroid.engine.hostbridge.HostTransport? = null
+
+    /**
      * Proxy delegate forwarded to the terminal session client. Set by the
      * terminal UI layer so the engine can relay events before the UI attaches.
      */

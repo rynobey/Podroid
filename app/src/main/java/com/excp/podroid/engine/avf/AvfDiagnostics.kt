@@ -30,6 +30,7 @@ data class AvfReport(
     val virtApexPresent: Boolean,
     val managerClassPresent: Boolean,
     val serviceReachable: Boolean,
+    val customVmConfigSupported: Boolean = false,
     val smokeTestResult: String?,
     val capabilitiesRaw: Int = 0,
     val capabilitiesDecoded: String = "n/a",
@@ -56,6 +57,9 @@ data class AvfReport(
         appendLine()
         appendLine("Service")
         appendLine("  reachable via system service = $serviceReachable")
+        appendLine()
+        appendLine("Custom-VM API")
+        appendLine("  builder present = $customVmConfigSupported")
         appendLine()
         appendLine("Hypervisor capabilities")
         appendLine("  raw = $capabilitiesRaw ($capabilitiesDecoded)")
@@ -103,6 +107,22 @@ object AvfDiagnostics {
     }
 
     /**
+     * True only if this device's AVF build exposes the custom-VM builder API
+     * Podroid drives (raw kernel + initrd). A vendor build that ships AVF for
+     * system use but omits the custom-image config will return false, so
+     * EngineHolder.pick() can fall back to QEMU at selection time instead of
+     * erroring at VM start. Never throws: a missing class is a normal "no".
+     */
+    fun customVmConfigSupported(): Boolean = runCatching {
+        val builder = Class.forName("$CLS_CUSTOM_CFG\$Builder")
+        builder.getDeclaredMethod("setKernelPath", String::class.java)
+        builder.getDeclaredMethod("setInitrdPath", String::class.java)
+        Class.forName("$CLS_CONFIG\$Builder")
+            .getDeclaredMethod("setCustomImageConfig", Class.forName(CLS_CUSTOM_CFG))
+        true
+    }.getOrDefault(false)
+
+    /**
      * Read-only probe — never blocks, never touches the system service for
      * real (just checks reachability). Safe to call from anywhere.
      */
@@ -129,6 +149,7 @@ object AvfDiagnostics {
             virtApexPresent = virtApexPresent,
             managerClassPresent = managerClassPresent,
             serviceReachable = serviceReachable,
+            customVmConfigSupported = customVmConfigSupported(),
             smokeTestResult = null,
             capabilitiesRaw = capabilitiesRaw,
             capabilitiesDecoded = AvfCapabilities.decode(capabilitiesRaw),

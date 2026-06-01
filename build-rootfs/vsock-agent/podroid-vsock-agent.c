@@ -8,6 +8,9 @@
  *
  *   <vport> tcp <host> <gport>     listen on AF_VSOCK port vport, splice each
  *                                  accepted connection to TCP host:gport
+ *   <vport> udp <host> <gport>     listen on AF_VSOCK port vport; each accepted
+ *                                  connection carries length-framed datagrams
+ *                                  ([u16 BE len][payload]) relayed to UDP host:gport
  *   <vport> ctl                    listen on AF_VSOCK port vport, accept ONE
  *                                  control connection at a time, handle the
  *                                  line-oriented protocol below
@@ -16,7 +19,7 @@
  *
  *   RESIZE <rows> <cols>           stty rows/cols on /dev/ttyS0, also persist
  *                                  to /run/term_size for podroid-login restore
- *   ADD    <vport> tcp <host> <gp> append to forwards.conf, fork new TCP
+ *   ADD    <vport> <tcp|udp> <host> <gp> append to forwards.conf, fork new
  *                                  listener immediately (idempotent on vport)
  *   REMOVE <vport>                 kill listener child for vport, remove line
  *   PING                           reply "PONG\n"
@@ -85,6 +88,10 @@ static void logmsg(const char *level, const char *fmt, ...) {
 #define LOG_W(...) logmsg("warn",  __VA_ARGS__)
 #define LOG_E(...) logmsg("error", __VA_ARGS__)
 
+/* Length-framed UDP-over-vsock: [u16 BE len][payload]. Matches DatagramFraming.kt. */
+#define UDP_FRAME_MAX     65535
+#define UDP_IDLE_BACKSTOP 90   /* seconds of total silence before a relay child self-exits */
+
 /* ── Listener table ─────────────────────────────────────────────────────── */
 
 #define MAX_LISTENERS 64
@@ -129,6 +136,48 @@ static void listener_remove(int idx) {
  * that has been stale across many event-loop iterations. */
 static int pid_alive(pid_t pid) {
     return kill(pid, 0) == 0 || errno != ESRCH;
+}
+
+/* Create + bind + listen an AF_VSOCK stream socket on vport. Returns the fd, or
+ * -1 (logged) on failure. Shared by the tcp and udp listeners. */
+static int vsock_listen(int vport) {
+    int s = socket(AF_VSOCK, SOCK_STREAM | SOCK_CLOEXEC, 0);
+    if (s < 0) { LOG_E("vsock socket() failed: %s", strerror(errno)); return -1; }
+    int one = 1;
+    setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one));
+    struct sockaddr_vm sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.svm_family = AF_VSOCK;
+    sa.svm_cid    = VMADDR_CID_ANY;
+    sa.svm_port   = (unsigned int)vport;
+    if (bind(s, (struct sockaddr *)&sa, sizeof(sa)) < 0) {
+        LOG_E("vsock bind(%d) failed: %s", vport, strerror(errno)); close(s); return -1;
+    }
+    if (listen(s, 16) < 0) {
+        LOG_E("vsock listen(%d) failed: %s", vport, strerror(errno)); close(s); return -1;
+    }
+    return s;
+}
+
+/* Write all n bytes to a (non-blocking) fd, waiting for writability on EAGAIN.
+ * Returns 0 on success, -1 on hard error. */
+static int write_all(int fd, const unsigned char *buf, size_t n) {
+    size_t off = 0;
+    while (off < n) {
+        ssize_t w = write(fd, buf + off, n - off);
+        if (w > 0) { off += (size_t)w; continue; }
+        if (w < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+            fd_set wf; FD_ZERO(&wf); FD_SET(fd, &wf);
+            if (select(fd + 1, NULL, &wf, NULL, NULL) < 0) {
+                if (errno == EINTR) continue;
+                return -1;
+            }
+            continue;
+        }
+        if (w < 0 && errno == EINTR) continue;
+        return -1;
+    }
+    return 0;
 }
 
 /* ── Splice loop (TCP listener child) ───────────────────────────────────── */
@@ -289,26 +338,8 @@ static void tcp_listener_main(int vport, const char *host, int gport) {
      * below inherit it, so REMOVE can kill(-pgid) the listener AND every
      * in-flight connection in one shot. setpgid(0,0) makes pgid == our pid. */
     setpgid(0, 0);
-    /* SOCK_CLOEXEC so this listener fd never leaks into a splice grandchild
-     * that (in a future change) might exec; we still close(s) in the child
-     * below for the no-exec path. */
-    int s = socket(AF_VSOCK, SOCK_STREAM | SOCK_CLOEXEC, 0);
-    if (s < 0) { LOG_E("vsock socket() failed: %s", strerror(errno)); _exit(1); }
-    int one = 1;
-    setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one));
-    struct sockaddr_vm sa;
-    memset(&sa, 0, sizeof(sa));
-    sa.svm_family = AF_VSOCK;
-    sa.svm_cid    = VMADDR_CID_ANY;
-    sa.svm_port   = (unsigned int)vport;
-    if (bind(s, (struct sockaddr *)&sa, sizeof(sa)) < 0) {
-        LOG_E("vsock bind(%d) failed: %s", vport, strerror(errno));
-        _exit(1);
-    }
-    if (listen(s, 16) < 0) {
-        LOG_E("vsock listen(%d) failed: %s", vport, strerror(errno));
-        _exit(1);
-    }
+    int s = vsock_listen(vport);
+    if (s < 0) _exit(1);
     /* Drop fds inherited from the parent that this listener has no use for: the
      * ctl listening socket, and (when forked from a live handle_add) the ctl
      * connection fd plus its dup in ctl_loop, as well as sibling forwarders'
@@ -344,18 +375,117 @@ static void tcp_listener_main(int vport, const char *host, int gport) {
     _exit(0);
 }
 
-/* ── Config parsing & live edits ────────────────────────────────────────── */
+/* ── UDP relay (udp listener child) ─────────────────────────────────────── */
 
 /*
- * Spawn a TCP listener child and remember its PID. Idempotent on vport.
- * Returns 1 when a NEW listener was spawned, 0 when one was already running,
- * -1 on failure. The caller uses the 1/0 split to append forwards.conf only on
- * a genuine new spawn (a re-ADD of a live vport must not duplicate the line).
- *
- * A row found for this vport whose pid is dead (the listener _exit'd on a
- * post-fork bind/listen failure, or was killed externally) is pruned here so a
- * re-ADD spawns a fresh listener instead of no-op'ing on the stale row. */
-static int spawn_tcp_listener(int vport, const char *host, int gport) {
+ * One vsock stream connection <-> one guest UDP socket. The vsock carries
+ * length-framed datagrams ([u16 BE len][payload]); the UDP socket is connect()ed
+ * to host:gport so we use send()/recv() and the kernel filters replies to that
+ * peer. Exits on vsock EOF (Android reaped the flow) or after UDP_IDLE_BACKSTOP
+ * seconds of silence (backstop in case Android dies without closing).
+ */
+static void udp_relay(int vsock_fd, const char *host, int gport) {
+    int u = socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0);
+    if (u < 0) { LOG_W("udp socket() failed: %s", strerror(errno)); close(vsock_fd); return; }
+    struct sockaddr_in sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sin_family = AF_INET;
+    sa.sin_port = htons((uint16_t)gport);
+    if (inet_pton(AF_INET, host, &sa.sin_addr) != 1) {
+        LOG_W("udp relay: bad host address '%s'", host);
+        close(u); close(vsock_fd); return;
+    }
+    if (connect(u, (struct sockaddr *)&sa, sizeof(sa)) < 0) {
+        LOG_W("udp connect %s:%d failed: %s", host, gport, strerror(errno));
+        close(u); close(vsock_fd); return;
+    }
+    if (vsock_fd >= FD_SETSIZE || u >= FD_SETSIZE) { close(u); close(vsock_fd); return; }
+    set_nonblock(vsock_fd);
+    set_nonblock(u);
+    int maxfd = (vsock_fd > u ? vsock_fd : u) + 1;
+
+    /* Per-call locals (this child runs udp_relay once then _exit). acc holds the
+     * vsock->udp frame-reassembly bytes; ~128KB total is fine on the process stack. */
+    unsigned char acc[2 + UDP_FRAME_MAX];
+    size_t acclen = 0;
+    unsigned char dgram[UDP_FRAME_MAX];
+
+    for (;;) {
+        fd_set rfds;
+        FD_ZERO(&rfds);
+        FD_SET(vsock_fd, &rfds);
+        FD_SET(u, &rfds);
+        struct timeval tv = { .tv_sec = UDP_IDLE_BACKSTOP, .tv_usec = 0 };
+        int r = select(maxfd, &rfds, NULL, NULL, &tv);
+        if (r < 0) { if (errno == EINTR) continue; break; }
+        if (r == 0) break;  /* idle backstop */
+
+        /* vsock -> udp: accumulate bytes, extract whole frames, send each. */
+        if (FD_ISSET(vsock_fd, &rfds)) {
+            ssize_t n = read(vsock_fd, acc + acclen, sizeof(acc) - acclen);
+            if (n == 0) break;  /* Android closed the flow */
+            if (n < 0) {
+                if (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) break;
+            } else {
+                acclen += (size_t)n;
+                for (;;) {
+                    if (acclen < 2) break;
+                    size_t plen = ((size_t)acc[0] << 8) | acc[1];
+                    if (acclen < 2 + plen) break;
+                    (void)send(u, acc + 2, plen, 0); /* best-effort; plen 0 = valid empty datagram */
+                    size_t consumed = 2 + plen;
+                    memmove(acc, acc + consumed, acclen - consumed);
+                    acclen -= consumed;
+                }
+            }
+        }
+
+        /* udp -> vsock: one datagram per recv, framed. write_all may block on
+         * EAGAIN waiting for vsock writability; acceptable for a single-flow relay
+         * (the host drains the reply stream on its own reader). */
+        if (FD_ISSET(u, &rfds)) {
+            ssize_t n = recv(u, dgram, sizeof(dgram), 0);
+            if (n >= 0) {
+                unsigned char hdr[2] = {
+                    (unsigned char)(((size_t)n >> 8) & 0xff),
+                    (unsigned char)((size_t)n & 0xff),
+                };
+                if (write_all(vsock_fd, hdr, 2) < 0) break;
+                if (n > 0 && write_all(vsock_fd, dgram, (size_t)n) < 0) break;
+            } else if (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) {
+                break;
+            }
+        }
+    }
+    close(u);
+    close(vsock_fd);
+}
+
+/* Forks the parent off — this function never returns in the child. */
+static void udp_listener_main(int vport, const char *host, int gport) {
+    setpgid(0, 0);
+    int s = vsock_listen(vport);
+    if (s < 0) _exit(1);
+    close_inherited_fds(s);
+    LOG_I("udp listener: vsock:%d → %s:%d", vport, host, gport);
+    for (;;) {
+        int c = accept4(s, NULL, NULL, SOCK_CLOEXEC);
+        if (c < 0) { if (errno == EINTR) continue; break; }
+        pid_t child = fork();
+        if (child < 0) { close(c); continue; }
+        if (child == 0) {
+            close_inherited_fds(c);
+            udp_relay(c, host, gport);
+            _exit(0);
+        }
+        close(c);
+    }
+    _exit(0);
+}
+
+/* ── Config parsing & live edits ────────────────────────────────────────── */
+
+static int spawn_listener(int vport, const char *host, int gport, int is_udp) {
     int idx = listener_find(vport);
     if (idx >= 0) {
         if (pid_alive(listeners[idx].pid)) return 0;  // already running
@@ -363,9 +493,10 @@ static int spawn_tcp_listener(int vport, const char *host, int gport) {
     }
     pid_t pid = fork();
     if (pid < 0) return -1;
-    if (pid == 0) tcp_listener_main(vport, host, gport);  // never returns
-    /* Set the child's pgid from the parent too (both sides race-free idiom):
-     * guarantees the group exists for kill(-pid) before REMOVE can fire. */
+    if (pid == 0) {
+        if (is_udp) udp_listener_main(vport, host, gport);  // never returns
+        else        tcp_listener_main(vport, host, gport);  // never returns
+    }
     setpgid(pid, pid);
     if (listener_add(vport, pid) < 0) {
         if (kill(-pid, SIGTERM) < 0 && errno == ESRCH) kill(pid, SIGTERM);
@@ -374,13 +505,11 @@ static int spawn_tcp_listener(int vport, const char *host, int gport) {
     return 1;
 }
 
-/* Append a TCP rule to the config file. Best-effort — failure is logged but
- * the in-memory listener is already running, so the rule stays live for this
- * boot. (Config restore on next boot is a soft feature.) */
-static void append_config_tcp(int vport, const char *host, int gport) {
+/* Append a forward rule to the config file. Best-effort. */
+static void append_config(int vport, const char *proto, const char *host, int gport) {
     FILE *f = fopen(CONFIG_PATH, "a");
     if (!f) { LOG_W("append %s failed: %s", CONFIG_PATH, strerror(errno)); return; }
-    fprintf(f, "%d tcp %s %d\n", vport, host, gport);
+    fprintf(f, "%d %s %s %d\n", vport, proto, host, gport);
     fclose(f);
 }
 
@@ -423,23 +552,18 @@ static void handle_resize(int rows, int cols) {
     if (f) { fprintf(f, "%d %d\n", rows, cols); fclose(f); }
 }
 
-static void handle_add(int vport, const char *host, int gport) {
-    int r = spawn_tcp_listener(vport, host, gport);
+static void handle_add(int vport, const char *proto, const char *host, int gport) {
+    int is_udp = (strcmp(proto, "udp") == 0);
+    int r = spawn_listener(vport, host, gport, is_udp);
     if (r < 0) {
         LOG_W("ADD vsock:%d failed", vport);
         return;
     }
-    /* Touch forwards.conf only on a genuine new spawn (r == 1). A repeated ADD
-     * of an already-running vport (r == 0) must not grow the file without
-     * bound. Drop any existing line for this vport first, then append once:
-     * when a re-ADD respawns after the old listener died on its own (no REMOVE
-     * ran, so its line lingers), this rewrites rather than duplicates — and it
-     * self-heals any stale duplicate already on disk. */
     if (r == 1) {
         remove_config_line(vport);
-        append_config_tcp(vport, host, gport);
+        append_config(vport, proto, host, gport);
     }
-    LOG_I("ADD vsock:%d → %s:%d", vport, host, gport);
+    LOG_I("ADD vsock:%d %s → %s:%d", vport, proto, host, gport);
 }
 
 static void handle_remove(int vport) {
@@ -502,8 +626,8 @@ static void ctl_loop(int fd) {
             int vport = 0, gport = 0;
             char proto[8], host[64];
             if (sscanf(line + 4, "%d %7s %63s %d", &vport, proto, host, &gport) == 4 &&
-                strcmp(proto, "tcp") == 0)
-                handle_add(vport, host, gport);
+                (strcmp(proto, "tcp") == 0 || strcmp(proto, "udp") == 0))
+                handle_add(vport, proto, host, gport);
             else LOG_W("bad ADD: '%s'", line);
         } else if (strncmp(line, "REMOVE ", 7) == 0) {
             int vport = 0;
@@ -529,7 +653,7 @@ static void ctl_loop(int fd) {
 
 static int ctl_vport = -1;
 
-/* Read config; spawn TCP listener children for tcp lines; remember the ctl
+/* Read config; spawn listener children for tcp/udp lines; remember the ctl
  * vport so main() can bind it. */
 static void parse_config_and_bootstrap(const char *path) {
     FILE *f = fopen(path, "r");
@@ -545,11 +669,12 @@ static void parse_config_and_bootstrap(const char *path) {
         if (sscanf(p, "%d %7s", &vport, kind) < 2) continue;
         if (strcmp(kind, "ctl") == 0) {
             ctl_vport = vport;
-        } else if (strcmp(kind, "tcp") == 0) {
+        } else if (strcmp(kind, "tcp") == 0 || strcmp(kind, "udp") == 0) {
             char host[64] = {0};
             int gport = 0;
+            int is_udp = (strcmp(kind, "udp") == 0);
             if (sscanf(p, "%d %*s %63s %d", &vport, host, &gport) == 3) {
-                if (spawn_tcp_listener(vport, host, gport) != 0)
+                if (spawn_listener(vport, host, gport, is_udp) != 0)
                     LOG_W("startup: spawn listener for vsock:%d failed", vport);
             }
         }

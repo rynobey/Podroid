@@ -36,6 +36,7 @@
         <li><a href="backends.html">Backends: QEMU &amp; AVF</a></li>
         <li><a href="networking.html">Networking &amp; ports</a></li>
         <li><a href="packages.html">Packages &amp; services</a></li>
+        <li><a href="migrations.html">Updates &amp; migrations</a></li>
         <li><a href="desktop.html">Desktops &amp; X11 viewer</a></li>
         <li><a href="settings.html">Terminal &amp; settings</a></li>
       </ul>
@@ -48,7 +49,7 @@
 
     <main class="content">
       <h1>How it works</h1>
-      <p class="lead">Podroid is a real virtual machine, not a translation layer or a container trick. An Alpine Linux 3.23 guest running a custom Linux 7.0.5 kernel boots inside the Android app, with full process isolation and a persistent filesystem.</p>
+      <p class="lead">Podroid is a real virtual machine, not a translation layer or a container trick. An Alpine Linux 3.23 guest running a custom Linux 7.0.10 kernel boots inside the Android app, with full process isolation and a persistent filesystem.</p>
 
       <h2>A real VM</h2>
       <p>When you tap "Start VM", the app launches a real hypervisor with a real aarch64 Alpine Linux guest. The guest kernel, the init system, the shell, and every process you run are all executing real ARM64 machine code inside a fully virtualized machine. There is no instruction translation of Alpine binaries, no Android kernel namespace trick, and no chroot. The guest sees a completely clean Linux environment.</p>
@@ -74,12 +75,15 @@
       </div>
 
       <h2>Init system: OpenRC</h2>
-      <p>OpenRC is PID 1 inside the guest. Three app-specific services on the squashfs handle bring-up:</p>
+      <p>OpenRC is PID 1 inside the guest. Several app-specific services on the squashfs handle bring-up; the three that drive the boot log are:</p>
       <ul>
         <li><strong>podroid-bootstrap:</strong> kernel modules, cgroup v2, ZRAM swap, devpts/shm/mqueue mounts, sysctl, hostname.</li>
         <li><strong>podroid-network:</strong> brings up eth0, assigns 10.0.2.15/24, sets the default route and /etc/resolv.conf (SLIRP provides NAT).</li>
         <li><strong>podroid-ready:</strong> emits the "Starting SSH...", "Almost ready...", and "Ready!" markers that the app tracks to update the notification and unlock the terminal.</li>
       </ul>
+
+      <h2>Guest-to-Android bridge</h2>
+      <p>A small daemon, <code>podroid-hostd</code>, lets processes inside the VM reach back to Android. It listens on a guest-local Unix socket and relays one-line requests to the app over the same control transport the VM already uses - a virtio-console port on QEMU, vsock on AVF. Two CLIs are wired to it: <code>podroid-notify</code> posts an Android notification, and <code>podroid-forward</code> creates or removes port-forward rules without leaving the shell. The app posts the notification or writes the rule on the host side. See <a href="networking.html">Networking &amp; ports</a> for usage.</p>
 
       <h2>Boot stages</h2>
       <p>The app watches the VM's serial console and updates the persistent notification as each stage marker appears. You can follow along in real time during the first boot, where host-key generation adds a visible pause between "Starting SSH..." and the next stage.</p>
@@ -105,7 +109,7 @@
         </thead>
         <tbody>
           <tr>
-            <td>Linux 7.0.5 kernel</td>
+            <td>Linux 7.0.10 kernel</td>
             <td>Custom-built arm64 guest kernel with overlayfs, cgroups v2, netfilter, FUSE, and VETH built in</td>
           </tr>
           <tr>
@@ -125,6 +129,10 @@
             <td>Hypervisor backend; QEMU (software TCG) works on any device, AVF (hardware) on supported Pixels</td>
           </tr>
           <tr>
+            <td>podroid-hostd</td>
+            <td>Guest-to-Android bridge daemon; relays <code>podroid-notify</code> and <code>podroid-forward</code> requests to the app over a virtio-console port (QEMU) or vsock (AVF)</td>
+          </tr>
+          <tr>
             <td>Foreground service</td>
             <td>Holds a partial WakeLock and the persistent notification to keep the VM running in the background</td>
           </tr>
@@ -135,7 +143,7 @@
         <a class="prev" href="getting-started.html"><span class="dir">Previous</span>&larr; Getting started</a>
         <a class="next" href="performance.html"><span class="dir">Next</span>Performance &amp; why it's slow &rarr;</a>
       </div>
-      <p class="docfoot">Podroid is free software (GPL). Docs for v1.2.1. Found something inaccurate? <a href="https://github.com/ExTV/Podroid/issues">Open an issue</a>.</p>
+      <p class="docfoot">Podroid is free software (GPL). Docs for v1.2.3. Found something inaccurate? <a href="https://github.com/ExTV/Podroid/issues">Open an issue</a>.</p>
     </main>
   </div>
 
