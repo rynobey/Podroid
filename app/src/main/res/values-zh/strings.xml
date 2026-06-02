@@ -203,6 +203,7 @@
     <!-- Misc -->
     <string name="add">添加</string>
     <string name="version_label">版本</string>
+    <string name="commit_label">提交</string>
     <string name="qemu_label">QEMU</string>
     <string name="stop_vm_before_edit">停止虚拟机后才能编辑 — 更改将在下次启动时生效。</string>
 

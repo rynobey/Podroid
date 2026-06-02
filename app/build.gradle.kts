@@ -13,6 +13,15 @@ plugins {
 
 val podroidQemuVersion = providers.gradleProperty("podroidQemuVersion").get()
 
+// Short git hash baked into BuildConfig so an installed APK can be traced back
+// to the exact commit it was built from. "-dirty" marks uncommitted changes;
+// "unknown" covers builds outside a git checkout (e.g. source tarballs).
+val podroidGitHash = runCatching {
+    providers.exec {
+        commandLine("git", "describe", "--always", "--dirty", "--exclude=*")
+    }.standardOutput.asText.get().trim()
+}.getOrDefault("").ifEmpty { "unknown" }
+
 android {
     namespace = "com.excp.podroid"
     compileSdk {
@@ -28,6 +37,7 @@ android {
         versionCode = 27
         versionName = "1.2.4"
         buildConfigField("String", "QEMU_VERSION", "\"$podroidQemuVersion\"")
+        buildConfigField("String", "GIT_HASH", "\"$podroidGitHash\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 

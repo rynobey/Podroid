@@ -27,8 +27,6 @@ object AvfReflect {
     private val CUSTOM by lazy { Class.forName("$PKG.VirtualMachineCustomImageConfig") }
     private val CUSTOM_B by lazy { Class.forName("$PKG.VirtualMachineCustomImageConfig\$Builder") }
     private val DISK by lazy { runCatching { Class.forName("$PKG.VirtualMachineCustomImageConfig\$Disk") }.getOrNull() }
-    private val GPU_CFG by lazy { runCatching { Class.forName("$PKG.VirtualMachineCustomImageConfig\$GpuConfig") }.getOrNull() }
-    private val GPU_CFG_B by lazy { runCatching { Class.forName("$PKG.VirtualMachineCustomImageConfig\$GpuConfig\$Builder") }.getOrNull() }
 
     fun manager(ctx: Context): Any {
         val m = Context::class.java.getMethod("getSystemService", Class::class.java)
@@ -106,127 +104,6 @@ object AvfReflect {
 
     fun setMemoryBytes(b: Any, bytes: Long) {
         invokeDecl(b, "setMemoryBytes", Long::class.javaPrimitiveType!! to bytes)
-    }
-
-    /**
-     * Try to enable the virtio-balloon device so the host can reclaim
-     * idle guest memory under pressure. Without this, every guest page
-     * that gets touched stays committed on the host indefinitely — Android
-     * sees the full VM allocation as resident regardless of guest activity,
-     * which on a 12 GB Pixel routinely triggers LMK kills of Podroid when
-     * the VM is doing memory-heavy operations (backup, big builds).
-     *
-     * Verified against the Android 16 AVF API (Pixel 10, May 2026 build)
-     * by pulling /apex/com.android.virt/javalib/framework-virtualization.jar
-     * and dexdump'ing it. The exact method is:
-     *
-     *   VirtualMachineCustomImageConfig$Builder.useAutoMemoryBalloon(Z)
-     *     → returns the Builder (chainable)
-     *     → hiddenapi: BLOCKED, so direct reflection from a non-platform
-     *       app requires the bypass that Podroid already has in place.
-     *
-     * The corresponding JSON-config field is `auto_memory_balloon` (we
-     * confirmed this in the Stock Linux Terminal's APK strings — same
-     * field name, same AVF version).
-     *
-     * Older Android-15 builds may have used `setAutoMemoryBalloon` or
-     * `setMemoryBalloon` on the same builder, so we still probe those
-     * as fallbacks. Note: there's also a RUNTIME setMemoryBalloon(long)
-     * on IVirtualMachine (the binder interface) for dynamic adjustment
-     * after start — that's a different code path, not what we want here.
-     *
-     * Returns true if any setter accepted the call. Logs the outcome so
-     * we can tell whether the device actually enables ballooning.
-     */
-    fun tryEnableMemoryBalloon(builder: Any): Boolean {
-        val candidates = listOf(
-            "useAutoMemoryBalloon",      // Android 16+ (confirmed Pixel 10)
-            "setAutoMemoryBalloon",      // hypothetical older revision
-            "setMemoryBalloon",          // hypothetical older revision
-        )
-        for (name in candidates) {
-            val ok = runCatching {
-                val m = builder.javaClass.getDeclaredMethod(name, java.lang.Boolean.TYPE)
-                    .apply { isAccessible = true }
-                m.invoke(builder, true)
-                android.util.Log.i(
-                    "AvfReflect",
-                    "memory balloon enabled via ${builder.javaClass.simpleName}.$name(true)",
-                )
-                true
-            }.getOrDefault(false)
-            if (ok) return true
-        }
-        return false
-    }
-
-    /**
-     * Try to attach a gfxstream GPU config to the CustomImageConfig
-     * builder, enabling hardware-accelerated rendering in the guest via
-     * virtio-gpu. Mirrors AOSP Terminal's ConfigJson$GpuJson → GpuConfig:
-     *
-     *   backend       = "gfxstream"
-     *   contextTypes  = ["gfxstream-vulkan"]
-     *   rendererUse{Vulkan,Gles,Egl,Surfaceless} = true
-     *
-     * Hard requirements for this to actually produce a usable GPU:
-     *   1. virtualizationservice must ACCEPT a GpuConfig from this
-     *      (non-platform) app — gated by USE_CUSTOM_VIRTUAL_MACHINE,
-     *      which adb-setup.sh grants. If it silently drops it, crosvm
-     *      launches without --gpu and this whole thing is a no-op.
-     *   2. The guest kernel must have CONFIG_DRM_VIRTIO_GPU so
-     *      /dev/dri/card0 appears. (podroid_kernel.config needs DRM
-     *      enabled — it's off by default.)
-     *
-     * This is the de-risk probe: even if (2) isn't met yet, a successful
-     * setGpuConfig + crosvm getting `--gpu` in its args confirms (1) —
-     * i.e. that the privilege gate is passable and the full GPU project
-     * is worth pursuing.
-     *
-     * Returns a human-readable status string for the launch summary.
-     */
-    fun tryEnableGpu(customBuilder: Any): String {
-        val gpuCfgB = GPU_CFG_B ?: return "unavailable (no GpuConfig\$Builder on this AVF revision)"
-        val gpuCfgCls = GPU_CFG ?: return "unavailable (no GpuConfig class on this AVF revision)"
-        return runCatching {
-            val b = gpuCfgB.getDeclaredConstructor().apply { isAccessible = true }.newInstance()
-
-            // backend — required
-            gpuCfgB.getDeclaredMethod("setBackend", String::class.java)
-                .apply { isAccessible = true }.invoke(b, "gfxstream")
-
-            // context types — gfxstream-vulkan is the modern path
-            runCatching {
-                gpuCfgB.getDeclaredMethod("setContextTypes", Array<String>::class.java)
-                    .apply { isAccessible = true }
-                    .invoke(b, arrayOf("gfxstream-vulkan"))
-            }
-
-            // renderer toggles — best-effort; tolerate any being absent
-            for ((name, value) in listOf(
-                "setRendererUseVulkan" to true,
-                "setRendererUseGles" to true,
-                "setRendererUseEgl" to true,
-                "setRendererUseSurfaceless" to true,
-            )) {
-                runCatching {
-                    gpuCfgB.getDeclaredMethod(name, java.lang.Boolean.TYPE)
-                        .apply { isAccessible = true }.invoke(b, value)
-                }
-            }
-
-            val gpuCfg = gpuCfgB.getDeclaredMethod("build").apply { isAccessible = true }.invoke(b)
-                ?: return "failed (GpuConfig.build() returned null)"
-
-            customBuilder.javaClass.getDeclaredMethod("setGpuConfig", gpuCfgCls)
-                .apply { isAccessible = true }.invoke(customBuilder, gpuCfg)
-
-            android.util.Log.i("AvfReflect",
-                "GPU config set: backend=gfxstream contextTypes=[gfxstream-vulkan]")
-            "enabled (gfxstream, contextTypes=[gfxstream-vulkan])"
-        }.getOrElse { e ->
-            "failed: ${e.javaClass.simpleName}: ${e.message}"
-        }
     }
 
     /** CPU topology values matching VirtualMachineConfig.CPU_TOPOLOGY_*. */

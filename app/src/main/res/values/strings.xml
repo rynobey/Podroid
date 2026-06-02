@@ -202,6 +202,7 @@
     <!-- Misc -->
     <string name="add">Add</string>
     <string name="version_label">Version</string>
+    <string name="commit_label">Commit</string>
     <string name="qemu_label">QEMU</string>
     <string name="stop_vm_before_edit">Stop the VM before editing — changes apply on next boot.</string>
 

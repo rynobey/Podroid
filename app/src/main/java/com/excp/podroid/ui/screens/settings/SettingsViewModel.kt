@@ -340,6 +340,7 @@ class SettingsViewModel @Inject constructor(
 
             appendLine("=== App ===")
             appendLine("Version:      ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
+            appendLine("Commit:       ${BuildConfig.GIT_HASH}")
             appendLine("Build type:   ${BuildConfig.BUILD_TYPE}")
             appendLine("App ID:       ${BuildConfig.APPLICATION_ID}")
             appendLine("QEMU version: ${BuildConfig.QEMU_VERSION}")

@@ -332,6 +332,7 @@ fun SettingsScreen(
                 // ── ABOUT ─────────────────────────────────────────────
                 PodroidSectionLabel(stringResource(R.string.about))
                 PodroidListRow(label = stringResource(R.string.version_label), value = "v${BuildConfig.VERSION_NAME}", mono = true)
+                PodroidListRow(label = stringResource(R.string.commit_label), value = BuildConfig.GIT_HASH, mono = true)
                 PodroidListRow(label = stringResource(R.string.qemu_label), value = "v${BuildConfig.QEMU_VERSION}", mono = true)
                 PodroidListRow(label = stringResource(R.string.architecture), value = "AArch64", mono = true)
                 PodroidListRow(label = stringResource(R.string.linux_distro), value = "Alpine 3.23", mono = true)
